@@ -15,7 +15,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$MsklcUrl = 'https://download.microsoft.com/download/5/6/d/56D63279-8C2D-498D-B30A-DB40293EDA10/MSKLC.exe'
+    [string]$MsklcUrl = 'https://download.microsoft.com/download/6/f/5/6f5ce43a-e892-4fd1-b9a6-1a0cbb64e6e2/MSKLC.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,13 +35,22 @@ try {
     Invoke-WebRequest -Uri $MsklcUrl -OutFile $exe -UseBasicParsing
     Write-Host "Downloaded $((Get-Item $exe).Length) bytes"
 
-    # MSKLC.exe is a self-extracting archive containing MSKLC.msi plus
-    # supporting files. `/quiet /norestart` silent-installs directly.
-    $argList = '/quiet', '/norestart'
+    # MSKLC.exe is an InstallShield self-extractor wrapping an MSI.
+    # Canonical silent-install: /s (InstallShield silent) /v"/qn /norestart"
+    # (args passed through to msiexec).
+    $argList = @('/s', '/v"/qn /norestart"')
     Write-Host "Running: $exe $($argList -join ' ')"
     $p = Start-Process -FilePath $exe -ArgumentList $argList -Wait -PassThru -NoNewWindow
     if ($p.ExitCode -ne 0) {
-        throw "MSKLC installer exited with code $($p.ExitCode)"
+        # Fall back to two-step extract + msiexec in case InstallShield rejects the form
+        Write-Warning "Single-step silent install returned $($p.ExitCode); trying extract + msiexec"
+        $ext = Join-Path $tmp 'extract'
+        New-Item -ItemType Directory -Force -Path $ext | Out-Null
+        Start-Process -FilePath $exe -ArgumentList @('/s', '/x', "/b`"$ext`"", '/v"/qn"') -Wait -NoNewWindow
+        $msi = Get-ChildItem -Path $ext -Filter 'MSKLC.msi' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $msi) { throw "Could not extract MSKLC.msi under $ext" }
+        $p2 = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msi.FullName, '/qn', '/norestart') -Wait -PassThru -NoNewWindow
+        if ($p2.ExitCode -ne 0) { throw "msiexec failed with exit $($p2.ExitCode)" }
     }
 
     if (-not (Test-Path $installed)) {
