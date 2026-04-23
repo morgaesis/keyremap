@@ -1,0 +1,4 @@
+LIBRARY kbdisdv
+ 
+ EXPORTS 
+    KbdLayerDescriptor @1

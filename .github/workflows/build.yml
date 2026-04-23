@@ -1,0 +1,136 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Windows Driver Kit install
+        id: cache-wdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Program Files (x86)\Windows Kits\10\Include
+            C:\Program Files (x86)\Windows Kits\10\Lib
+          key: wdk10-${{ runner.os }}-v1
+
+      - name: Install Windows Driver Kit
+        if: steps.cache-wdk.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          choco install windowsdriverkit10.1 -y --no-progress
+          # Verify kbd.h is available
+          $kbd = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\Include' -Recurse -Filter 'kbd.h' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $kbd) { throw 'kbd.h not found after WDK install' }
+          Write-Host "kbd.h: $($kbd.FullName)"
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Build kbdisdv.dll
+        shell: pwsh
+        run: |
+          .\scripts\build.ps1 -Arch ${{ matrix.arch }}
+
+      - name: Verify DLL exports
+        shell: pwsh
+        run: |
+          $dll = "build\${{ matrix.arch }}\kbdisdv.dll"
+          if (-not (Test-Path $dll)) { throw "DLL missing: $dll" }
+          $exports = dumpbin.exe /exports $dll
+          Write-Host ($exports -join "`n")
+          if ($exports -notmatch 'KbdLayerDescriptor') {
+            throw "KbdLayerDescriptor not exported"
+          }
+          # Size sanity: real kbd DLLs are ~5-20 KB. If we get kilobytes the
+          # DEADKEY/VK tables probably got optimized away.
+          $size = (Get-Item $dll).Length
+          Write-Host "DLL size: $size bytes"
+          if ($size -lt 4096) { throw "DLL suspiciously small ($size bytes)" }
+          if ($size -gt 200000) { throw "DLL suspiciously large ($size bytes)" }
+
+      - name: Verify DLL architecture
+        shell: pwsh
+        run: |
+          $dll = "build\${{ matrix.arch }}\kbdisdv.dll"
+          $headers = dumpbin.exe /headers $dll
+          $expected = switch ('${{ matrix.arch }}') {
+            'x86'   { 'machine \(x86\)' }
+            'x64'   { 'machine \(x64\)' }
+            'arm64' { 'machine \(ARM64\)' }
+          }
+          if ($headers -notmatch $expected) {
+            throw "DLL architecture mismatch (expected $expected)"
+          }
+          Write-Host "Architecture verified: $expected"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kbdisdv-${{ matrix.arch }}
+          path: |
+            build/${{ matrix.arch }}/kbdisdv.dll
+            scripts/install.ps1
+            scripts/uninstall.ps1
+          if-no-files-found: error
+
+  qa:
+    name: QA (character table golden check)
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: kbdisdv-x64
+          path: artifacts/x64
+
+      - name: Golden-check character table
+        shell: pwsh
+        run: |
+          .\tests\golden-check.ps1 -DllPath artifacts\x64\kbdisdv.dll
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [build, qa]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package release bundle
+        run: |
+          set -euo pipefail
+          mkdir -p release/Icelandic-Dvorak-${{ github.ref_name }}
+          for a in x86 x64 arm64; do
+            mkdir -p release/Icelandic-Dvorak-${{ github.ref_name }}/$a
+            cp artifacts/kbdisdv-$a/build/$a/kbdisdv.dll release/Icelandic-Dvorak-${{ github.ref_name }}/$a/
+          done
+          cp artifacts/kbdisdv-x64/scripts/*.ps1 release/Icelandic-Dvorak-${{ github.ref_name }}/
+          cp README.md LICENSE release/Icelandic-Dvorak-${{ github.ref_name }}/
+          cd release && zip -r Icelandic-Dvorak-${{ github.ref_name }}.zip Icelandic-Dvorak-${{ github.ref_name }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/Icelandic-Dvorak-${{ github.ref_name }}.zip
+          generate_release_notes: true
