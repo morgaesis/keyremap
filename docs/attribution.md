@@ -16,9 +16,11 @@ Bjarmason and the xkeyboard-config maintainers.
 - `kbdutool.exe` (used at development time to regenerate C from KLC) ships
   with **Microsoft Keyboard Layout Creator 1.4**, a free Microsoft download.
   MSKLC itself is not redistributed by this project.
-- `kbd.h` is part of the **Windows Driver Kit** (WDK) 10. It is fetched at
-  build time from the WDK installation on the developer's or CI's machine.
-  It is not redistributed by this project.
+- `kbd.h` is part of the **Windows 10/11 SDK** (`Include\<version>\um\`).
+  It is read at build time from the SDK installation on the developer's or
+  CI's machine. It is not redistributed by this project. The header has
+  historically lived in the WDK `km\` directory as well — the build script
+  finds it in either location.
 - Compilation relies on Microsoft Visual C++ (MSVC) from Visual Studio Build
   Tools 2022. Not redistributed.
 

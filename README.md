@@ -71,16 +71,14 @@ See [`docs/layout.md`](docs/layout.md) for the full key table.
 
 You need a Windows machine (any arch) with:
 
-1. **Visual Studio 2022 Build Tools** with Desktop C++ and the MSVC v143 ARM64
-   build tools:
+1. **Visual Studio 2022 Build Tools** with Desktop C++, the MSVC v143 ARM64
+   build tools, and the **Windows 11 SDK** (10.0.22621 or newer — the SDK
+   includes `kbd.h` under `Include\<ver>\um\`, which is the only non-MSVC
+   dependency):
    ```powershell
-   winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --passive"
+   winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --passive"
    ```
-2. **Windows Driver Kit 10** for `kbd.h`:
-   ```powershell
-   choco install windowsdriverkit10.1 -y
-   ```
-3. From the repo root, in PowerShell:
+2. From the repo root, in PowerShell:
    ```powershell
    .\scripts\build.ps1 -Arch arm64
    # or x64, x86

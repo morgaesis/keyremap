@@ -55,21 +55,25 @@ if (-not $vsInstall) { throw "No VS install with MSVC C++ tools found." }
 $vsDevCmd = Join-Path $vsInstall 'Common7\Tools\VsDevCmd.bat'
 if (-not (Test-Path $vsDevCmd)) { throw "VsDevCmd.bat not found under $vsInstall." }
 
-# --- Locate kbd.h (from WDK or MSKLC) ------------------------------------------
+# --- Locate kbd.h (shipped with recent Windows 10/11 SDKs under um\) -----------
+# Order of preference:
+#   1. Windows 10/11 SDK um\ directory (default on VS 2022 runners)
+#   2. Windows 10/11 WDK km\ directory (installed via VS WDK component)
+#   3. MSKLC 1.4 inc\ (dev machine fallback)
 $kbdH = $null
 $candidates = @(
-    # WDK 10 locations (Chocolatey puts it here)
-    "$env:ProgramFiles\Windows Kits\10\Include\*\km\*kbd.h",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\Include\*\um\kbd.h",
+    "$env:ProgramFiles\Windows Kits\10\Include\*\um\kbd.h",
     "${env:ProgramFiles(x86)}\Windows Kits\10\Include\*\km\kbd.h",
-    # MSKLC fallback (dev machines)
+    "$env:ProgramFiles\Windows Kits\10\Include\*\km\kbd.h",
     "${env:ProgramFiles(x86)}\Microsoft Keyboard Layout Creator 1.4\inc\kbd.h"
 )
 foreach ($glob in $candidates) {
-    $found = Get-ChildItem -Path $glob -ErrorAction SilentlyContinue | Select-Object -First 1
+    $found = Get-ChildItem -Path $glob -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
     if ($found) { $kbdH = $found.DirectoryName; break }
 }
 if (-not $kbdH) {
-    throw "kbd.h not found. Install the Windows Driver Kit: choco install windowsdriverkit10.1 -y"
+    throw "kbd.h not found. Install the Windows 10/11 SDK via Visual Studio Installer, or the WDK, or MSKLC 1.4."
 }
 Write-Host "Using kbd.h from: $kbdH"
 
