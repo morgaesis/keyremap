@@ -38,33 +38,9 @@ jobs:
         run: |
           .\scripts\build.ps1 -Arch ${{ matrix.arch }}
 
-      - name: Verify DLL exports and architecture
+      - name: Verify DLL size, architecture, and export table
         shell: pwsh
-        run: |
-          $dll = "build\${{ matrix.arch }}\kbdisdv.dll"
-          if (-not (Test-Path $dll)) { throw "DLL missing: $dll" }
-
-          $exports = (dumpbin.exe /exports $dll) -join "`n"
-          Write-Host $exports
-          if ($exports -notmatch 'KbdLayerDescriptor') {
-            throw "KbdLayerDescriptor not exported"
-          }
-
-          $size = (Get-Item $dll).Length
-          Write-Host "DLL size: $size bytes"
-          if ($size -lt 4096)   { throw "DLL suspiciously small ($size bytes)" }
-          if ($size -gt 200000) { throw "DLL suspiciously large ($size bytes)" }
-
-          $headers = (dumpbin.exe /headers $dll) -join "`n"
-          $expected = switch ('${{ matrix.arch }}') {
-            'x86'   { 'machine \(x86\)' }
-            'x64'   { 'machine \(x64\)' }
-            'arm64' { 'machine \(ARM64\)' }
-          }
-          if ($headers -notmatch $expected) {
-            throw "DLL architecture mismatch (expected $expected)"
-          }
-          Write-Host "Architecture verified: $expected"
+        run: .\tests\verify-dll.ps1 -DllPath "build\${{ matrix.arch }}\kbdisdv.dll" -ExpectedArch "${{ matrix.arch }}"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -122,27 +122,8 @@ if (-not (Test-Path $outDll)) { throw "Build finished but $outDll is missing." }
 $size = (Get-Item $outDll).Length
 Write-Host "Built: $outDll ($size bytes)"
 
-# --- Post-build sanity: KbdLayerDescriptor must be exported --------------------
-# Note: PowerShell's -match/-notmatch on an array returns the filtered subset,
-# so we join the dumpbin output into a single string before matching.
-$dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
-if (-not $dumpbin) {
-    $testBat = Join-Path $OutDir '_dump.bat'
-    @"
-@echo off
-call "$vsDevCmd" -arch=$vsArch -host_arch=amd64 -no_logo >NUL 2>&1
-dumpbin.exe /exports "$outDll"
-"@ | Set-Content -Encoding ASCII -Path $testBat
-    $exportsRaw = cmd.exe /c "`"$testBat`"" 2>&1
-} else {
-    $exportsRaw = & dumpbin.exe /exports $outDll 2>&1
-}
-$exportsText = $exportsRaw -join "`n"
-
-if ($exportsText -notmatch 'KbdLayerDescriptor') {
-    Write-Host $exportsText
-    throw "DLL is missing KbdLayerDescriptor export. Linker step failed silently."
-}
-Write-Host "OK: KbdLayerDescriptor is exported."
+# --- Post-build sanity ---------------------------------------------------------
+# Delegates to tests\verify-dll.ps1 which parses the PE directly (no dumpbin).
+& (Join-Path $RepoRoot 'tests\verify-dll.ps1') -DllPath $outDll -ExpectedArch $Arch
 
 Write-Output $outDll
