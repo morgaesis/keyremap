@@ -157,7 +157,63 @@ if ($AddToCurrentUser) {
     }
 }
 
+# --- Activate without requiring sign-out ---------------------------------------
+# user32!LoadKeyboardLayoutW pulls the newly registered layout into the current
+# session's input-language list. WM_INPUTLANGCHANGEREQUEST broadcast tells
+# explorer/CTF to refresh the language bar so Win+Space picks it up live.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KbdActivate {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadKeyboardLayout(string pwszKLID, uint Flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint Msg, UIntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+
+    public const uint KLF_ACTIVATE       = 0x00000001;
+    public const uint KLF_SUBSTITUTE_OK  = 0x00000002;
+    public const uint KLF_REORDER        = 0x00000008;
+    public const uint KLF_SETFORPROCESS  = 0x00000100;
+    public const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
+    public const uint WM_SETTINGCHANGE            = 0x001A;
+    public static readonly IntPtr HWND_BROADCAST  = (IntPtr)0xFFFF;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+}
+'@
+
+try {
+    $hkl = [KbdActivate]::LoadKeyboardLayout($klid, [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_SUBSTITUTE_OK -bor [KbdActivate]::KLF_REORDER)
+    if ($hkl -eq [IntPtr]::Zero) {
+        $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Write-Warning "LoadKeyboardLayout returned NULL (error $code). You may need to sign out and back in."
+    } else {
+        Write-Host ("LoadKeyboardLayout OK (HKL=0x{0:X})" -f $hkl.ToInt64())
+    }
+
+    $result = [UIntPtr]::Zero
+    [void][KbdActivate]::SendMessageTimeout(
+        [KbdActivate]::HWND_BROADCAST,
+        [KbdActivate]::WM_INPUTLANGCHANGEREQUEST,
+        [UIntPtr]::Zero, $hkl,
+        [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
+        [ref]$result
+    )
+    [void][KbdActivate]::SendMessageTimeout(
+        [KbdActivate]::HWND_BROADCAST,
+        [KbdActivate]::WM_SETTINGCHANGE,
+        [UIntPtr]::Zero, [IntPtr]::Zero,
+        [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
+        [ref]$result
+    )
+    Write-Host "Broadcast WM_INPUTLANGCHANGEREQUEST / WM_SETTINGCHANGE."
+} catch {
+    Write-Warning "Live activation failed: $_. Sign out and back in to see the layout."
+}
+
 Write-Host ""
 Write-Host "==> Install complete."
-Write-Host "    Sign out and back in (or reboot) to activate."
-Write-Host "    After that: Win+Space to switch layouts, or Settings → Time & language → Language."
+Write-Host "    Win+Space should now list 'Icelandic Dvorak'. If not, sign out and back in."
+Write-Host "    Settings → Time & language → Language & region."

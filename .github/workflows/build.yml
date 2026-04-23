@@ -28,6 +28,22 @@ jobs:
           }
           Write-Host "kbd.h: $($kbd.FullName)"
 
+      - name: Cache MSKLC install
+        id: cache-msklc
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Microsoft Keyboard Layout Creator 1.4
+          key: msklc-1.4-v1
+
+      - name: Install MSKLC for kbdutool.exe
+        if: steps.cache-msklc.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: .\scripts\install-msklc.ps1
+
+      - name: Regenerate C sources via kbdutool
+        shell: pwsh
+        run: .\scripts\generate.ps1
+
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:

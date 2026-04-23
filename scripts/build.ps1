@@ -45,6 +45,12 @@ if (-not $OutDir) {
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
+if (-not (Test-Path (Join-Path $SrcDir 'kbdisdv.c'))) {
+    Write-Host "generated/ not populated — running generate.ps1"
+    & (Join-Path $PSScriptRoot 'generate.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "generate.ps1 failed" }
+}
+
 # --- Locate MSVC via vswhere ----------------------------------------------------
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (-not (Test-Path $vswhere)) {

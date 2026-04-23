@@ -26,9 +26,8 @@ Bjarmason and the xkeyboard-config maintainers.
 
 ## Generated files
 
-Files under `generated/` are produced mechanically by `kbdutool.exe` from
-`src/kbdisdv.klc`. They carry a Microsoft copyright notice at the top
-because kbdutool emits its own header; the layout data within them is
-original work based on the xkeyboard-config sources above. These files are
-committed to the repository so that continuous integration can build
-without installing MSKLC.
+The `generated/` directory is produced at build time from `src/kbdisdv.klc`
+via `kbdutool.exe` (part of the free MSKLC 1.4 download). It contains
+Microsoft-copyrighted kbdutool header text that we therefore never commit
+to version control; CI installs MSKLC on each run and regenerates them
+fresh. Local developers can do the same via `scripts\generate.ps1`.

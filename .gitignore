@@ -11,10 +11,12 @@ build/
 *.pdb
 *.res
 
-# Generated C sources (reproducible from .klc via kbdutool) are committed under
-# generated/ so downstream builds and CI don't require MSKLC. If you regenerate,
-# overwrite those files and commit the diff.
+# Generated C sources are produced from .klc via kbdutool. We don't commit
+# them because the kbdutool-emitted header carries a Microsoft copyright
+# notice. CI installs MSKLC and regenerates on every build.
 
 # Local scratch
 .scratch/
 tmp/
+
+generated/

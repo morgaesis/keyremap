@@ -33,8 +33,10 @@ Built on Windows 11 ARM64 (Snapdragon X), x64, and x86. CI produces all three.
    ```powershell
    .\install.ps1
    ```
-3. Sign out and back in (or reboot) so Windows picks up the new DLL.
-4. Win+Space to switch. Look for **Icelandic Dvorak** in the layout picker.
+3. Win+Space immediately lists **Icelandic Dvorak**. (No sign-out needed —
+   the installer calls `LoadKeyboardLayoutW` and broadcasts an input-language
+   refresh so Windows picks it up live. If the picker still doesn't show it,
+   a sign-out is the fallback.)
 
 To remove:
 ```powershell
@@ -71,47 +73,51 @@ See [`docs/layout.md`](docs/layout.md) for the full key table.
 
 You need a Windows machine (any arch) with:
 
-1. **Visual Studio 2022 Build Tools** with Desktop C++, the MSVC v143 ARM64
-   build tools, and the **Windows 11 SDK** (10.0.22621 or newer — the SDK
-   includes `kbd.h` under `Include\<ver>\um\`, which is the only non-MSVC
-   dependency):
+1. **Visual Studio 2022 Build Tools** with Desktop C++, MSVC v143 ARM64
+   build tools, and the **Windows 11 SDK** (the SDK provides `kbd.h`):
    ```powershell
    winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --passive"
    ```
-2. From the repo root, in PowerShell:
+2. **Microsoft Keyboard Layout Creator 1.4** for `kbdutool.exe` — free download
+   from Microsoft. The build will auto-download and silent-install it if
+   missing, via `scripts\install-msklc.ps1`.
+3. From the repo root, in PowerShell:
    ```powershell
    .\scripts\build.ps1 -Arch arm64
    # or x64, x86
    ```
    Output: `build\<arch>\kbdisdv.dll`.
 
-Regenerating the C source from the KLC (only needed when editing
-`src\kbdisdv.klc`) requires MSKLC 1.4, run `.\scripts\generate.ps1`. The
-generated files are committed under `generated/` so CI does not need MSKLC.
+The pipeline is:
+- `src\kbdisdv.klc` is the source of truth.
+- `scripts\generate.ps1` runs MSKLC's `kbdutool.exe` to produce
+  `generated\kbdisdv.{c,h,def,rc}`. `generated/` is gitignored — we do not
+  commit Microsoft-copyrighted kbdutool output into an MIT repo. CI runs
+  this step fresh on every build.
+- `scripts\build.ps1 -Arch <arch>` compiles the generated sources into
+  `build\<arch>\kbdisdv.dll` via MSVC.
 
 ## Architecture
 
 ```
-src/kbdisdv.klc          ┐
-                         │  scripts\generate.ps1  (local dev, MSKLC)
-                         ▼
-generated/kbdisdv.{c,h,def,rc}    ← committed
-                         │
-                         │  scripts\build.ps1  (MSVC + WDK, per-arch)
-                         ▼
+src/kbdisdv.klc                    ← source of truth, committed
+        │
+        │  scripts\generate.ps1  (MSKLC's kbdutool.exe)
+        ▼
+generated/kbdisdv.{c,h,def,rc}     ← gitignored, regenerated every build
+        │
+        │  scripts\build.ps1  (MSVC, per-arch)
+        ▼
 build/<arch>/kbdisdv.dll
-                         │
-                         │  scripts\install.ps1  (Administrator)
-                         ▼
+        │
+        │  scripts\install.ps1  (Administrator)
+        ▼
 %SystemRoot%\System32\kbdisdv.dll + HKLM registry entry
+        │
+        │  LoadKeyboardLayoutW + WM_INPUTLANGCHANGEREQUEST broadcast
+        ▼
+Available in Win+Space immediately — no sign-out required.
 ```
-
-The **source of truth** is `src/kbdisdv.klc` — a text format originally
-defined by MSKLC. `kbdutool.exe` (MSKLC's CLI) converts `.klc` → C/H/DEF/RC,
-which then compiles to a kbd\*.dll with any MSVC-targeting toolchain. We
-commit the generated C so that CI on a fresh GitHub runner doesn't need MSKLC
-installed — only MSVC + WDK. This keeps the build reproducible, fast, and
-auditable.
 
 ## Roadmap
 
