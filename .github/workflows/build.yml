@@ -61,11 +61,20 @@ jobs:
         with:
           name: kbdisdv-x64
           path: artifacts/x64
+      # upload-artifact@v4 preserves the path hierarchy from the upload, so the
+      # DLL lands at artifacts/x64/build/x64/kbdisdv.dll. List and resolve the
+      # exact path so this doesn't break if the upload path ever changes.
+      - name: Locate downloaded DLL
+        id: dll
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Path artifacts -Recurse -Filter kbdisdv.dll | Select-Object -First 1
+          if (-not $found) { throw "No kbdisdv.dll in downloaded artifact tree." }
+          "path=$($found.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
 
       - name: Golden-check character table
         shell: pwsh
-        run: |
-          .\tests\golden-check.ps1 -DllPath artifacts\x64\kbdisdv.dll
+        run: .\tests\golden-check.ps1 -DllPath "${{ steps.dll.outputs.path }}"
 
   release:
     name: Release
