@@ -39,11 +39,39 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $GoldenFile = Join-Path $RepoRoot 'tests\golden\is-dvorak.json'
 
 # --- P/Invoke wrapper: load DLL, get KbdLayerDescriptor, walk tables -----------
+# Top-level structs (not nested) — PowerShell 7 / .NET 6+ marshalling rejects
+# nested structs with "must be blittable or have layout information" even when
+# [StructLayout(Sequential)] is present. Keeping them at namespace scope avoids
+# that and the generic PtrToStructure<T> path below Just Works.
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
-public static class KbdLoader {
+[StructLayout(LayoutKind.Sequential)]
+public struct KBDTABLES_PARTIAL {
+    public IntPtr pCharModifiers;
+    public IntPtr pVkToWcharTable;
+    public IntPtr pDeadKey;
+    public IntPtr pKeyNames;
+    public IntPtr pKeyNamesExt;
+    public IntPtr pKeyNamesDead;
+    public IntPtr pusVSCtoVK;
+    public byte bMaxVSCtoVK;
+    public IntPtr pVSCtoVK_E0;
+    public IntPtr pVSCtoVK_E1;
+    public uint fLocaleFlags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct KBDDEADKEY {
+    public uint dwBoth;
+    public ushort wchComposed;
+    public ushort uFlags;
+}
+
+public delegate IntPtr KbdLayerDescriptorFn();
+
+public static class Win32 {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     public static extern IntPtr LoadLibrary(string path);
 
@@ -53,71 +81,37 @@ public static class KbdLoader {
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool FreeLibrary(IntPtr hModule);
-
-    public delegate IntPtr KbdLayerDescriptorFn();
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct KBDTABLES {
-        public IntPtr pCharModifiers;
-        public IntPtr pVkToWcharTable;
-        public IntPtr pDeadKey;
-        public IntPtr pKeyNames;
-        public IntPtr pKeyNamesExt;
-        public IntPtr pKeyNamesDead;
-        public IntPtr pusVSCtoVK;
-        public byte bMaxVSCtoVK;
-        public IntPtr pVSCtoVK_E0;
-        public IntPtr pVSCtoVK_E1;
-        public uint fLocaleFlags;
-        public byte nLgMax;
-        public byte cbLgEntry;
-        public IntPtr pLigature;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct VK_TO_WCHAR_TABLE {
-        public IntPtr pVkToWchars;
-        public byte nModifications;
-        public byte cbSize;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct DEADKEY {
-        public uint dwBoth;     // HIWORD = accent, LOWORD = character
-        public ushort wchComposed;
-        public ushort uFlags;
-    }
 }
 "@
 
-function Read-Struct {
-    param([IntPtr]$ptr, [type]$type)
-    if ($ptr -eq [IntPtr]::Zero) { return $null }
-    [System.Runtime.InteropServices.Marshal]::PtrToStructure($ptr, $type)
+$h = [Win32]::LoadLibrary($DllPath)
+if ($h -eq [IntPtr]::Zero) {
+    $lastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    throw "LoadLibrary failed: error $lastError"
 }
 
-$h = [KbdLoader]::LoadLibrary($DllPath)
-if ($h -eq [IntPtr]::Zero) { throw "LoadLibrary failed: error $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
-
 try {
-    $proc = [KbdLoader]::GetProcAddress($h, 'KbdLayerDescriptor')
+    $proc = [Win32]::GetProcAddress($h, 'KbdLayerDescriptor')
     if ($proc -eq [IntPtr]::Zero) { throw 'KbdLayerDescriptor not exported' }
-    $fn = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($proc, [KbdLoader+KbdLayerDescriptorFn])
+
+    $fn = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($proc, [KbdLayerDescriptorFn])
     $tablesPtr = $fn.Invoke()
-    $tables = Read-Struct $tablesPtr ([KbdLoader+KBDTABLES])
+    if ($tablesPtr -eq [IntPtr]::Zero) { throw 'KbdLayerDescriptor returned NULL' }
+
+    $tables = [System.Runtime.InteropServices.Marshal]::PtrToStructure[KBDTABLES_PARTIAL]($tablesPtr)
 
     # --- Dead keys -------------------------------------------------------------
     $deadKeys = @{}
     if ($tables.pDeadKey -ne [IntPtr]::Zero) {
         $offset = $tables.pDeadKey
-        $size = [System.Runtime.InteropServices.Marshal]::SizeOf([type][KbdLoader+DEADKEY])
+        $size = [System.Runtime.InteropServices.Marshal]::SizeOf([type][KBDDEADKEY])
         while ($true) {
-            $dk = Read-Struct $offset ([KbdLoader+DEADKEY])
+            $dk = [System.Runtime.InteropServices.Marshal]::PtrToStructure[KBDDEADKEY]($offset)
             if ($dk.dwBoth -eq 0) { break }
-            $accent = [char]($dk.dwBoth -shr 16)
-            $base = [char]($dk.dwBoth -band 0xffff)
+            $accent = $dk.dwBoth -shr 16
+            $base = $dk.dwBoth -band 0xffff
             $key = "U+{0:X4}+U+{1:X4}" -f [int]$accent, [int]$base
-            $deadKeys[$key] = ("U+{0:X4}" -f $dk.wchComposed)
+            $deadKeys[$key] = ("U+{0:X4}" -f [int]$dk.wchComposed)
             $offset = [IntPtr]($offset.ToInt64() + $size)
         }
     }
@@ -130,7 +124,7 @@ try {
         deadKeys = $deadKeys
     }
 } finally {
-    [void][KbdLoader]::FreeLibrary($h)
+    [void][Win32]::FreeLibrary($h)
 }
 
 # --- Assertions / golden compare ----------------------------------------------
@@ -160,10 +154,14 @@ if ($result.deadKeys['U+00B4+U+0059'] -ne 'U+00DD') {
     throw "dead_acute+Y did not produce Ý"
 }
 
-# AltGr flag must be set or AltGr combinations break
-if ($tables.fLocaleFlags -band 1 -ne 1) {  # KLLF_ALTGR = 1
+# AltGr flag must be set or AltGr combinations break.
+# fLocaleFlags is 32-bit packed: HIWORD=KBD_VERSION, LOWORD=flags.
+# KLLF_ALTGR = 0x0001 in the low word.
+$flags = $tables.fLocaleFlags -band 0xFFFF
+if (($flags -band 1) -ne 1) {
     throw "KLLF_ALTGR flag not set in fLocaleFlags (got $($result.fLocaleFlags))"
 }
+Write-Host ("fLocaleFlags={0} (low word 0x{1:X4}, KLLF_ALTGR set)" -f $result.fLocaleFlags, $flags)
 
 Write-Host "OK: $($result.deadKeyCount) dead key sequences, AltGr flag set, Icelandic accents verified."
 
