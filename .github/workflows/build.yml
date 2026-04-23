@@ -10,22 +10,21 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }}
+    name: Build ${{ matrix.arch }} (${{ matrix.variant }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
         arch: [x86, x64, arm64]
+        variant: [default, caps-altgr, caps-esc, caps-ctrl]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Locate kbd.h (shipped with Windows SDK on runner image)
+      - name: Locate kbd.h (Windows SDK, pre-installed on runner)
         shell: pwsh
         run: |
           $kbd = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\Include' -Recurse -Filter 'kbd.h' -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $kbd) {
-            throw 'kbd.h not found in Windows SDK include tree. Runner image has regressed or SDK component is missing.'
-          }
+          if (-not $kbd) { throw 'kbd.h not found in Windows SDK include tree.' }
           Write-Host "kbd.h: $($kbd.FullName)"
 
       - name: Cache MSKLC install
@@ -35,68 +34,75 @@ jobs:
           path: C:\Program Files (x86)\Microsoft Keyboard Layout Creator 1.4
           key: msklc-1.4-v1
 
-      - name: Install MSKLC for kbdutool.exe
+      - name: Install MSKLC (for kbdutool)
         if: steps.cache-msklc.outputs.cache-hit != 'true'
         shell: pwsh
         run: .\scripts\install-msklc.ps1
 
-      - name: Regenerate C sources via kbdutool
+      - name: Generate C sources (${{ matrix.variant }})
         shell: pwsh
-        run: .\scripts\generate.ps1
+        run: .\scripts\generate.ps1 -Variant ${{ matrix.variant }}
 
-      - name: Set up MSVC environment
+      - name: Set up MSVC (${{ matrix.arch }})
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
 
-      - name: Build kbdisdv.dll
+      - name: Build DLL
+        shell: pwsh
+        run: .\scripts\build.ps1 -Arch ${{ matrix.arch }} -Variant ${{ matrix.variant }}
+
+      - name: Verify DLL
         shell: pwsh
         run: |
-          .\scripts\build.ps1 -Arch ${{ matrix.arch }}
-
-      - name: Verify DLL size, architecture, and export table
-        shell: pwsh
-        run: .\tests\verify-dll.ps1 -DllPath "build\${{ matrix.arch }}\kbdisdv.dll" -ExpectedArch "${{ matrix.arch }}"
+          $spec = & { . .\scripts\variants.ps1; Get-VariantSpec -Name '${{ matrix.variant }}' }
+          .\tests\verify-dll.ps1 -DllPath "build\${{ matrix.arch }}\$($spec.DllName)" -ExpectedArch "${{ matrix.arch }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kbdisdv-${{ matrix.arch }}
-          path: |
-            build/${{ matrix.arch }}/kbdisdv.dll
-            scripts/install.ps1
-            scripts/uninstall.ps1
+          name: dll-${{ matrix.arch }}-${{ matrix.variant }}
+          path: build/${{ matrix.arch }}/*.dll
           if-no-files-found: error
 
   qa:
-    name: QA (character table golden check)
+    name: QA golden check (x64 default)
     runs-on: windows-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: kbdisdv-x64
-          path: artifacts/x64
-      # upload-artifact@v4 preserves the path hierarchy from the upload, so the
-      # DLL lands at artifacts/x64/build/x64/kbdisdv.dll. List and resolve the
-      # exact path so this doesn't break if the upload path ever changes.
-      - name: Locate downloaded DLL
-        id: dll
-        shell: pwsh
-        run: |
-          $found = Get-ChildItem -Path artifacts -Recurse -Filter kbdisdv.dll | Select-Object -First 1
-          if (-not $found) { throw "No kbdisdv.dll in downloaded artifact tree." }
-          "path=$($found.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
-
+          name: dll-x64-default
+          path: artifacts
       - name: Golden-check character table
         shell: pwsh
-        run: .\tests\golden-check.ps1 -DllPath "${{ steps.dll.outputs.path }}"
+        run: |
+          $dll = Get-ChildItem artifacts -Recurse -Filter kbdisdv.dll | Select-Object -First 1
+          if (-not $dll) { throw "No kbdisdv.dll in artifacts" }
+          .\tests\golden-check.ps1 -DllPath $dll.FullName
+
+  package-scripts:
+    name: Package install scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scripts
+          path: |
+            scripts/install.ps1
+            scripts/uninstall.ps1
+            scripts/variants.ps1
+            README.md
+            LICENSE
+            ROADMAP.md
+          if-no-files-found: error
 
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: [build, qa]
+    needs: [build, qa, package-scripts]
     permissions:
       contents: write
     steps:
@@ -104,20 +110,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - name: Package release bundle
         run: |
           set -euo pipefail
-          mkdir -p release/Icelandic-Dvorak-${{ github.ref_name }}
+          tag="${{ github.ref_name }}"
+          root="release/keyremap-${tag}"
+          mkdir -p "$root"
           for a in x86 x64 arm64; do
-            mkdir -p release/Icelandic-Dvorak-${{ github.ref_name }}/$a
-            cp artifacts/kbdisdv-$a/build/$a/kbdisdv.dll release/Icelandic-Dvorak-${{ github.ref_name }}/$a/
+            mkdir -p "$root/$a"
+            # Collect all variant DLLs for this arch
+            find "artifacts" -type f -name '*.dll' -path "*dll-$a-*" -exec cp {} "$root/$a/" \;
           done
-          cp artifacts/kbdisdv-x64/scripts/*.ps1 release/Icelandic-Dvorak-${{ github.ref_name }}/
-          cp README.md LICENSE release/Icelandic-Dvorak-${{ github.ref_name }}/
-          cd release && zip -r Icelandic-Dvorak-${{ github.ref_name }}.zip Icelandic-Dvorak-${{ github.ref_name }}
-
+          cp artifacts/scripts/*.ps1 "$root/"
+          cp artifacts/scripts/README.md artifacts/scripts/LICENSE artifacts/scripts/ROADMAP.md "$root/"
+          cd release && zip -r "keyremap-${tag}.zip" "keyremap-${tag}"
+          ls -la
       - uses: softprops/action-gh-release@v2
         with:
-          files: release/Icelandic-Dvorak-${{ github.ref_name }}.zip
+          files: |
+            release/keyremap-${{ github.ref_name }}.zip
           generate_release_notes: true

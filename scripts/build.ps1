@@ -1,36 +1,29 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Compile the Icelandic Dvorak keyboard layout DLL.
+  Compile a keyboard layout DLL variant for a target architecture.
 
 .DESCRIPTION
-  Compiles generated\kbdisdv.c into kbdisdv.dll for the requested target
-  architecture using the MSVC toolchain. Produces a keyboard-layout-format
-  DLL suitable for copying into C:\Windows\System32 and registering as a
-  native Windows keyboard layout.
-
-  Requires:
-    - Visual Studio 2022 Build Tools or full VS, with "Desktop C++" and
-      "MSVC v143 ARM64/ARM64EC build tools" components.
-    - Windows Driver Kit (WDK) 10 — provides kbd.h. Install via:
-        choco install windowsdriverkit10.1 -y
-      or through the Visual Studio Installer "Windows Driver Kit" component.
+  Takes the generated C/H/DEF/RC sources for a specified variant
+  (see scripts/variants.ps1) and compiles them into a native kbd*.dll
+  for the requested architecture via MSVC.
 
 .PARAMETER Arch
-  Target architecture. One of: x86, x64, arm64. Default: arm64.
+  x86, x64, or arm64. Default: arm64.
+
+.PARAMETER Variant
+  default, caps-altgr, caps-esc, caps-ctrl. Default: default.
 
 .PARAMETER OutDir
-  Directory for build output. Defaults to build\$Arch\.
-
-.EXAMPLE
-  .\scripts\build.ps1 -Arch arm64
-  .\scripts\build.ps1 -Arch x64 -OutDir build-release\x64
+  Output directory. Defaults to build\<arch>\.
 #>
 
 [CmdletBinding()]
 param(
     [ValidateSet('x86', 'x64', 'arm64')]
     [string]$Arch = 'arm64',
+
+    [string]$Variant = 'default',
 
     [string]$OutDir
 )
@@ -39,33 +32,28 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$SrcDir = Join-Path $RepoRoot 'generated'
-if (-not $OutDir) {
-    $OutDir = Join-Path $RepoRoot "build\$Arch"
-}
+. (Join-Path $PSScriptRoot 'variants.ps1')
+$spec = Get-VariantSpec -Name $Variant
+
+$SrcDir = Join-Path $RepoRoot "generated\$Variant"
+if (-not $OutDir) { $OutDir = Join-Path $RepoRoot "build\$Arch" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-if (-not (Test-Path (Join-Path $SrcDir 'kbdisdv.c'))) {
-    Write-Host "generated/ not populated — running generate.ps1"
-    & (Join-Path $PSScriptRoot 'generate.ps1')
+if (-not (Test-Path (Join-Path $SrcDir ($spec.BaseName + '.c')))) {
+    Write-Host "generated\$Variant not populated — running generate.ps1 -Variant $Variant"
+    & (Join-Path $PSScriptRoot 'generate.ps1') -Variant $Variant
     if ($LASTEXITCODE -ne 0) { throw "generate.ps1 failed" }
 }
 
 # --- Locate MSVC via vswhere ----------------------------------------------------
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path $vswhere)) {
-    throw "vswhere.exe not found. Install Visual Studio 2022 Build Tools."
-}
+if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found. Install Visual Studio 2022 Build Tools." }
 $vsInstall = & $vswhere -latest -products '*' -requires 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' -property installationPath
 if (-not $vsInstall) { throw "No VS install with MSVC C++ tools found." }
 $vsDevCmd = Join-Path $vsInstall 'Common7\Tools\VsDevCmd.bat'
 if (-not (Test-Path $vsDevCmd)) { throw "VsDevCmd.bat not found under $vsInstall." }
 
-# --- Locate kbd.h (shipped with recent Windows 10/11 SDKs under um\) -----------
-# Order of preference:
-#   1. Windows 10/11 SDK um\ directory (default on VS 2022 runners)
-#   2. Windows 10/11 WDK km\ directory (installed via VS WDK component)
-#   3. MSKLC 1.4 inc\ (dev machine fallback)
+# --- Locate kbd.h --------------------------------------------------------------
 $kbdH = $null
 $candidates = @(
     "${env:ProgramFiles(x86)}\Windows Kits\10\Include\*\um\kbd.h",
@@ -79,26 +67,22 @@ foreach ($glob in $candidates) {
     if ($found) { $kbdH = $found.DirectoryName; break }
 }
 if (-not $kbdH) {
-    throw "kbd.h not found. Install the Windows 10/11 SDK via Visual Studio Installer, or the WDK, or MSKLC 1.4."
+    throw "kbd.h not found. Install the Windows 10/11 SDK via Visual Studio Installer, or MSKLC 1.4."
 }
 Write-Host "Using kbd.h from: $kbdH"
 
-# --- Map arch to VsDevCmd target arch ------------------------------------------
 $vsArch = @{ 'x86' = 'x86'; 'x64' = 'amd64'; 'arm64' = 'arm64' }[$Arch]
 
-# Call VsDevCmd to set up the environment for the target arch, then compile in
-# that child shell. All cl/rc/link state lives in env vars inside cmd.exe.
-$cSrc = Join-Path $SrcDir 'kbdisdv.c'
-$rcSrc = Join-Path $SrcDir 'kbdisdv.rc'
-$defSrc = Join-Path $SrcDir 'kbdisdv.def'
-$outDll = Join-Path $OutDir 'kbdisdv.dll'
-$resFile = Join-Path $OutDir 'kbdisdv.res'
-$objFile = Join-Path $OutDir 'kbdisdv.obj'
+$base = $spec.BaseName
+$cSrc = Join-Path $SrcDir "$base.c"
+$rcSrc = Join-Path $SrcDir "$base.rc"
+$defSrc = Join-Path $SrcDir "$base.def"
+$outDll = Join-Path $OutDir $spec.DllName
+$resFile = Join-Path $OutDir "$base.res"
+$objFile = Join-Path $OutDir "$base.obj"
 
 foreach ($path in @($cSrc, $rcSrc, $defSrc)) {
-    if (-not (Test-Path $path)) {
-        throw "Missing source: $path. Regenerate via scripts\generate.ps1."
-    }
+    if (-not (Test-Path $path)) { throw "Missing source: $path." }
 }
 
 $buildCmd = @"
@@ -117,10 +101,10 @@ link.exe /nologo /DLL /NOENTRY /NODEFAULTLIB /SUBSYSTEM:NATIVE ^
     /OUT:"$outDll" "$objFile" "$resFile" || exit /b 4
 "@
 
-$bat = Join-Path $OutDir '_build.bat'
+$bat = Join-Path $OutDir "_build-$base.bat"
 $buildCmd | Set-Content -Encoding ASCII -Path $bat
 
-Write-Host "Building kbdisdv.dll ($Arch)..."
+Write-Host "Building $($spec.DllName) ($Arch, variant $Variant)..."
 cmd.exe /c "`"$bat`""
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
 
@@ -128,8 +112,7 @@ if (-not (Test-Path $outDll)) { throw "Build finished but $outDll is missing." }
 $size = (Get-Item $outDll).Length
 Write-Host "Built: $outDll ($size bytes)"
 
-# --- Post-build sanity ---------------------------------------------------------
-# Delegates to tests\verify-dll.ps1 which parses the PE directly (no dumpbin).
+# Verify via PE parsing
 & (Join-Path $RepoRoot 'tests\verify-dll.ps1') -DllPath $outDll -ExpectedArch $Arch
 
 Write-Output $outDll
