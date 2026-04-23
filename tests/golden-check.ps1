@@ -39,10 +39,9 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $GoldenFile = Join-Path $RepoRoot 'tests\golden\is-dvorak.json'
 
 # --- P/Invoke wrapper: load DLL, get KbdLayerDescriptor, walk tables -----------
-# Top-level structs (not nested) — PowerShell 7 / .NET 6+ marshalling rejects
-# nested structs with "must be blittable or have layout information" even when
-# [StructLayout(Sequential)] is present. Keeping them at namespace scope avoids
-# that and the generic PtrToStructure<T> path below Just Works.
+# C#-side helpers do all the marshalling. This works under both Windows
+# PowerShell 5.1 (which lacks the generic PtrToStructure<T> PS syntax) and
+# PowerShell 7 (whose marshaller is pickier about nested struct layouts).
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -82,6 +81,22 @@ public static class Win32 {
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool FreeLibrary(IntPtr hModule);
 }
+
+public static class KbdMarshal {
+    public static KBDTABLES_PARTIAL ReadTables(IntPtr p) {
+        return (KBDTABLES_PARTIAL)Marshal.PtrToStructure(p, typeof(KBDTABLES_PARTIAL));
+    }
+    public static KBDDEADKEY ReadDeadKey(IntPtr p) {
+        return (KBDDEADKEY)Marshal.PtrToStructure(p, typeof(KBDDEADKEY));
+    }
+    public static int DeadKeySize() {
+        return Marshal.SizeOf(typeof(KBDDEADKEY));
+    }
+    public static IntPtr CallZeroArg(IntPtr fn) {
+        KbdLayerDescriptorFn d = (KbdLayerDescriptorFn)Marshal.GetDelegateForFunctionPointer(fn, typeof(KbdLayerDescriptorFn));
+        return d();
+    }
+}
 "@
 
 $h = [Win32]::LoadLibrary($DllPath)
@@ -94,19 +109,18 @@ try {
     $proc = [Win32]::GetProcAddress($h, 'KbdLayerDescriptor')
     if ($proc -eq [IntPtr]::Zero) { throw 'KbdLayerDescriptor not exported' }
 
-    $fn = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($proc, [KbdLayerDescriptorFn])
-    $tablesPtr = $fn.Invoke()
+    $tablesPtr = [KbdMarshal]::CallZeroArg($proc)
     if ($tablesPtr -eq [IntPtr]::Zero) { throw 'KbdLayerDescriptor returned NULL' }
 
-    $tables = [System.Runtime.InteropServices.Marshal]::PtrToStructure[KBDTABLES_PARTIAL]($tablesPtr)
+    $tables = [KbdMarshal]::ReadTables($tablesPtr)
 
     # --- Dead keys -------------------------------------------------------------
     $deadKeys = @{}
     if ($tables.pDeadKey -ne [IntPtr]::Zero) {
         $offset = $tables.pDeadKey
-        $size = [System.Runtime.InteropServices.Marshal]::SizeOf([type][KBDDEADKEY])
+        $size = [KbdMarshal]::DeadKeySize()
         while ($true) {
-            $dk = [System.Runtime.InteropServices.Marshal]::PtrToStructure[KBDDEADKEY]($offset)
+            $dk = [KbdMarshal]::ReadDeadKey($offset)
             if ($dk.dwBoth -eq 0) { break }
             $accent = $dk.dwBoth -shr 16
             $base = $dk.dwBoth -band 0xffff
