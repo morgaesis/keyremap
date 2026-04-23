@@ -123,21 +123,24 @@ $size = (Get-Item $outDll).Length
 Write-Host "Built: $outDll ($size bytes)"
 
 # --- Post-build sanity: KbdLayerDescriptor must be exported --------------------
+# Note: PowerShell's -match/-notmatch on an array returns the filtered subset,
+# so we join the dumpbin output into a single string before matching.
 $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
 if (-not $dumpbin) {
-    # dumpbin is in the MSVC bin dir — add it via a fresh VsDevCmd invocation
     $testBat = Join-Path $OutDir '_dump.bat'
     @"
 @echo off
 call "$vsDevCmd" -arch=$vsArch -host_arch=amd64 -no_logo >NUL 2>&1
 dumpbin.exe /exports "$outDll"
 "@ | Set-Content -Encoding ASCII -Path $testBat
-    $exports = cmd.exe /c "`"$testBat`""
+    $exportsRaw = cmd.exe /c "`"$testBat`"" 2>&1
 } else {
-    $exports = & dumpbin.exe /exports $outDll
+    $exportsRaw = & dumpbin.exe /exports $outDll 2>&1
 }
+$exportsText = $exportsRaw -join "`n"
 
-if ($exports -notmatch 'KbdLayerDescriptor') {
+if ($exportsText -notmatch 'KbdLayerDescriptor') {
+    Write-Host $exportsText
     throw "DLL is missing KbdLayerDescriptor export. Linker step failed silently."
 }
 Write-Host "OK: KbdLayerDescriptor is exported."

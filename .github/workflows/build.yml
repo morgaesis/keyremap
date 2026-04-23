@@ -38,28 +38,24 @@ jobs:
         run: |
           .\scripts\build.ps1 -Arch ${{ matrix.arch }}
 
-      - name: Verify DLL exports
+      - name: Verify DLL exports and architecture
         shell: pwsh
         run: |
           $dll = "build\${{ matrix.arch }}\kbdisdv.dll"
           if (-not (Test-Path $dll)) { throw "DLL missing: $dll" }
-          $exports = dumpbin.exe /exports $dll
-          Write-Host ($exports -join "`n")
+
+          $exports = (dumpbin.exe /exports $dll) -join "`n"
+          Write-Host $exports
           if ($exports -notmatch 'KbdLayerDescriptor') {
             throw "KbdLayerDescriptor not exported"
           }
-          # Size sanity: real kbd DLLs are ~5-20 KB. If we get kilobytes the
-          # DEADKEY/VK tables probably got optimized away.
+
           $size = (Get-Item $dll).Length
           Write-Host "DLL size: $size bytes"
-          if ($size -lt 4096) { throw "DLL suspiciously small ($size bytes)" }
+          if ($size -lt 4096)   { throw "DLL suspiciously small ($size bytes)" }
           if ($size -gt 200000) { throw "DLL suspiciously large ($size bytes)" }
 
-      - name: Verify DLL architecture
-        shell: pwsh
-        run: |
-          $dll = "build\${{ matrix.arch }}\kbdisdv.dll"
-          $headers = dumpbin.exe /headers $dll
+          $headers = (dumpbin.exe /headers $dll) -join "`n"
           $expected = switch ('${{ matrix.arch }}') {
             'x86'   { 'machine \(x86\)' }
             'x64'   { 'machine \(x64\)' }
