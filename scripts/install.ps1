@@ -60,16 +60,40 @@ $BaseLangId = '040f'            # Icelandic (is-IS) base language
 $LayoutsKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32 = Join-Path $env:SystemRoot 'System32'
 
-# --- Pick an unused Layout Id (top byte 'axxx' for custom layouts) -------------
-function Get-AvailableLayoutId {
-    # Windows convention: custom layout KLIDs use the last 4 hex digits as
-    # Layout Id. Scan existing keys for collisions.
-    $existingKlids = Get-ChildItem $LayoutsKey | ForEach-Object { $_.PSChildName }
-    for ($id = 0xa000; $id -lt 0xffff; $id++) {
-        $candidate = ('{0:x4}{1}' -f $id, $BaseLangId)
-        if ($existingKlids -notcontains $candidate) { return $candidate }
+# --- Pick an unused KLID and Layout Id -----------------------------------------
+# KLID is the registry key name (8 hex chars: upper 4 = vendor/variant, lower 4
+# = language id). Layout Id is a separate 4-hex-char value that must be unique
+# across ALL installed keyboards system-wide (Windows tracks layouts by this
+# value internally — collisions silently break selection).
+function Get-AvailableLayoutIds {
+    $existing = Get-ChildItem $LayoutsKey
+    $existingKlids = $existing | ForEach-Object { $_.PSChildName }
+    $existingLayoutIds = @{}
+    foreach ($k in $existing) {
+        try {
+            $id = (Get-ItemProperty $k.PSPath -Name 'Layout Id' -ErrorAction Stop).'Layout Id'
+            if ($id) { $existingLayoutIds[$id.ToLower()] = $true }
+        } catch { }
     }
-    throw "No free Layout Id in range a000..ffff (really?)"
+
+    # KLIDs for custom layouts conventionally start at 0xa000 in the upper half.
+    # Layout Id space is 0001..FFFF; default layouts use ~0001..0070, so start
+    # at 0x00a0 to stay clear of both reserved values and common user layouts.
+    $klid = $null
+    for ($hi = 0xa000; $hi -lt 0xffff; $hi++) {
+        $candidate = ('{0:x4}{1}' -f $hi, $BaseLangId)
+        if ($existingKlids -notcontains $candidate) { $klid = $candidate; break }
+    }
+    if (-not $klid) { throw "No free KLID available in range a000..ffff" }
+
+    $layoutId = $null
+    for ($id = 0x00a0; $id -le 0xffff; $id++) {
+        $candidate = ('{0:x4}' -f $id)
+        if (-not $existingLayoutIds.ContainsKey($candidate)) { $layoutId = $candidate; break }
+    }
+    if (-not $layoutId) { throw "No free Layout Id available in range 00a0..ffff" }
+
+    return @{ Klid = $klid; LayoutId = $layoutId }
 }
 
 # Re-use an existing entry for this layout if present
@@ -80,13 +104,19 @@ $existing = Get-ChildItem $LayoutsKey | Where-Object {
 if ($existing -and -not $Force) {
     Write-Host "Layout already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
     $klid = $existing.PSChildName
+    $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+    if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
 } else {
     if ($existing -and $Force) {
         $klid = $existing.PSChildName
-        Write-Host "Overwriting existing KLID: $klid"
+        $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+        if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
+        Write-Host "Overwriting existing KLID: $klid (Layout Id: $layoutIdHex)"
     } else {
-        $klid = Get-AvailableLayoutId
-        Write-Host "Allocated new KLID: $klid"
+        $ids = Get-AvailableLayoutIds
+        $klid = $ids.Klid
+        $layoutIdHex = $ids.LayoutId
+        Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex"
     }
 }
 
@@ -100,10 +130,6 @@ $keyPath = Join-Path $LayoutsKey $klid
 if (-not (Test-Path $keyPath)) {
     New-Item -Path $LayoutsKey -Name $klid -Force | Out-Null
 }
-
-# Layout Id must be a unique 4-digit hex string for the "custom layout" feature
-# to work across language bar preloads. Derived from the upper half of KLID.
-$layoutIdHex = $klid.Substring(0, 4)
 
 Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $LayoutFile -Type String
 Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
