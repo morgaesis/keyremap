@@ -88,6 +88,22 @@ function Get-LayoutPayloadName {
     return ('{0}{1}.dll' -f $prefix, $hash.Substring(0, 8 - $prefix.Length))
 }
 
+function Get-LayoutHashHighWord {
+    param([Parameter(Mandatory)][string]$SourceDll)
+
+    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $seed = [Convert]::ToInt32($hash.Substring(0, 4), 16)
+    return 0xb000 + ($seed % 0x3000)
+}
+
+function Get-LayoutHashLayoutId {
+    param([Parameter(Mandatory)][string]$SourceDll)
+
+    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $seed = [Convert]::ToInt32($hash.Substring(4, 4), 16)
+    return 0x1000 + ($seed % 0xefff)
+}
+
 function Get-InstalledLayoutEntries {
     param(
         [Parameter(Mandatory)][string]$LayoutText,
@@ -122,7 +138,11 @@ function Remove-PreloadKlids {
 
 # --- Pick unused KLID + Layout Id ---------------------------------------------
 function Get-AvailableLayoutIds {
-    param([Parameter(Mandatory)][string]$BaseLangId)
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [int]$PreferredHighWord = -1,
+        [int]$PreferredLayoutId = -1
+    )
 
     $existing = Get-ChildItem $LayoutsKey
     $existingKlids = $existing | ForEach-Object { $_.PSChildName }
@@ -134,14 +154,24 @@ function Get-AvailableLayoutIds {
         } catch { }
     }
     $klid = $null
+    if ($PreferredHighWord -ge 0xa000 -and $PreferredHighWord -lt 0xffff) {
+        $candidate = ('{0:x4}{1}' -f $PreferredHighWord, $BaseLangId)
+        if ($existingKlids -notcontains $candidate) { $klid = $candidate }
+    }
     for ($hi = 0xa000; $hi -lt 0xffff; $hi++) {
+        if ($klid) { break }
         $candidate = ('{0:x4}{1}' -f $hi, $BaseLangId)
         if ($existingKlids -notcontains $candidate) { $klid = $candidate; break }
     }
     if (-not $klid) { throw "No free KLID available in range a000..ffff" }
 
     $layoutId = $null
+    if ($PreferredLayoutId -ge 0x00a0 -and $PreferredLayoutId -le 0xffff) {
+        $candidate = ('{0:x4}' -f $PreferredLayoutId)
+        if (-not $existingLayoutIds.ContainsKey($candidate)) { $layoutId = $candidate }
+    }
     for ($id = 0x00a0; $id -le 0xffff; $id++) {
+        if ($layoutId) { break }
         $candidate = ('{0:x4}' -f $id)
         if (-not $existingLayoutIds.ContainsKey($candidate)) { $layoutId = $candidate; break }
     }
@@ -170,10 +200,15 @@ function Install-OneLayout {
     }
 
     $payloadFile = Get-LayoutPayloadName -SourceDll $sourceDll -OriginalDllName $LayoutFile
+    $preferredHighWord = Get-LayoutHashHighWord -SourceDll $sourceDll
+    $preferredLayoutId = Get-LayoutHashLayoutId -SourceDll $sourceDll
+    $preferredLayoutIdHex = ('{0:x4}' -f $preferredLayoutId)
+    $preferredKlid = ('{0:x4}{1}' -f $preferredHighWord, $BaseLangId)
     $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -LayoutFiles @($LayoutFile, $payloadFile))
     $matchingPayload = @($existing | Where-Object {
         try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
     } | Select-Object -First 1)
+    $matchingPreferredPayload = @($matchingPayload | Where-Object { $_.PSChildName -eq $preferredKlid } | Select-Object -First 1)
 
     if ($existing -and -not $Force) {
         $entry = if ($matchingPayload) { $matchingPayload[0] } else { $existing[0] }
@@ -182,13 +217,12 @@ function Install-OneLayout {
         $layoutIdHex = (Get-ItemProperty $entry.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
         if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds -BaseLangId $BaseLangId).LayoutId }
     } else {
-        if ($matchingPayload -and $Force) {
-            $klid = $matchingPayload[0].PSChildName
-            $layoutIdHex = (Get-ItemProperty $matchingPayload[0].PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
-            if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds -BaseLangId $BaseLangId).LayoutId }
+        if ($matchingPreferredPayload -and $Force) {
+            $klid = $matchingPreferredPayload[0].PSChildName
+            $layoutIdHex = $preferredLayoutIdHex
             Write-Host "Refreshing existing KLID: $klid (Layout Id: $layoutIdHex)"
         } else {
-            $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId
+            $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId -PreferredHighWord $preferredHighWord -PreferredLayoutId $preferredLayoutId
             $klid = $ids.Klid
             $layoutIdHex = $ids.LayoutId
             Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex"

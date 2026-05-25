@@ -12,7 +12,8 @@
 [CmdletBinding()]
 param(
     [string]$KlcPath,
-    [string]$CPath
+    [string]$CPath,
+    [string]$HPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,9 +21,11 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $KlcPath) { $KlcPath = Join-Path $RepoRoot 'src\kbdisdv.klc' }
 if (-not $CPath) { $CPath = Join-Path $RepoRoot 'generated\kbdisdv.c' }
+if (-not $HPath) { $HPath = Join-Path $RepoRoot 'generated\kbdisdv.h' }
 
 if (-not (Test-Path $KlcPath)) { throw "KLC not found: $KlcPath" }
 if (-not (Test-Path $CPath)) { throw "C source not found: $CPath" }
+if (-not (Test-Path $HPath)) { throw "Header source not found: $HPath" }
 
 $klcLines = Get-Content $KlcPath -Encoding UTF8
 $vkRows = New-Object System.Collections.Generic.List[object]
@@ -50,6 +53,59 @@ function Convert-KlcCell {
     return @{ Main = $expr; Dead = $null }
 }
 
+function Get-KlcCellCodepoint {
+    param([string]$Cell)
+    $cell = $Cell.Trim()
+    if ($cell -eq '-1') { return $null }
+    if ($cell.EndsWith('@')) { $cell = $cell.Substring(0, $cell.Length - 1) }
+    if ($cell -match '^[0-9a-fA-F]{4,6}$') { return [Convert]::ToInt32($cell, 16) }
+    if ($cell.Length -gt 0) { return [int][char]$cell[0] }
+    return $null
+}
+
+function Get-VkForBaseCell {
+    param(
+        [string]$Cell,
+        [string]$FallbackVk
+    )
+
+    $code = Get-KlcCellCodepoint $Cell
+    if ($null -eq $code) { return $FallbackVk }
+    $ch = [char]$code
+    if ($ch -ge 'a' -and $ch -le 'z') { return ([string]$ch).ToUpperInvariant() }
+    if ($ch -ge 'A' -and $ch -le 'Z') { return ([string]$ch).ToUpperInvariant() }
+    if ($ch -ge '0' -and $ch -le '9') { return [string]$ch }
+
+    $punctuation = @{
+        '`' = 'OEM_3'
+        '-' = 'OEM_MINUS'
+        '=' = 'OEM_PLUS'
+        '[' = 'OEM_4'
+        ']' = 'OEM_6'
+        '\' = 'OEM_5'
+        ';' = 'OEM_1'
+        "'" = 'OEM_7'
+        ',' = 'OEM_COMMA'
+        '.' = 'OEM_PERIOD'
+        '/' = 'OEM_2'
+        ' ' = 'SPACE'
+    }
+    if ($punctuation.ContainsKey([string]$ch)) { return $punctuation[[string]$ch] }
+    return $FallbackVk
+}
+
+function Convert-VkToCExpr {
+    param([string]$Vk)
+    if ($Vk -match '^[A-Z0-9]$') { return "'$Vk'" }
+    return "VK_$Vk"
+}
+
+function Convert-VkToTExpr {
+    param([string]$Vk)
+    if ($Vk -match '^[A-Z0-9]$') { return "'$Vk'" }
+    return $Vk
+}
+
 foreach ($line in $klcLines) {
     if ($line -match '^LAYOUT\b') { $inLayout = $true; continue }
     if ($inLayout -and $line -match '^(DEADKEY|KEYNAME|DESCRIPTIONS|LANGUAGENAMES|ENDKBD)\b') { break }
@@ -61,9 +117,11 @@ foreach ($line in $klcLines) {
     $parts = $withoutComment -split '\s+'
     if ($parts.Count -lt 8) { continue }
 
+    $scan = $parts[0].ToUpperInvariant()
     $vk = $parts[1]
     if ($vk -in @('TAB', 'BACK', 'RETURN', 'ESCAPE', 'CANCEL')) { continue }
     if ($vk -match '^OEM_|^[A-Z0-9]+$|^SPACE$') {
+        $resolvedVk = Get-VkForBaseCell -Cell $parts[3] -FallbackVk $vk
         $cells = @(
             Convert-KlcCell $parts[3]
             Convert-KlcCell $parts[4]
@@ -74,8 +132,14 @@ foreach ($line in $klcLines) {
         $hasChar = @($cells | Where-Object { $_.Main -ne 'WCH_NONE' }).Count -gt 0
         if (-not $hasChar) { continue }
         $attr = if ($parts[2] -eq '1') { 'CAPLOK' } else { '0' }
-        $vkExpr = if ($vk -match '^[A-Z0-9]$') { "'$vk'" } else { "VK_$vk" }
-        $vkRows.Add([pscustomobject]@{ Vk = $vkExpr; Attr = $attr; Cells = $cells })
+        $vkRows.Add([pscustomobject]@{
+            Scan = $scan
+            OriginalVk = $vk
+            ResolvedVk = $resolvedVk
+            Vk = Convert-VkToCExpr $resolvedVk
+            Attr = $attr
+            Cells = $cells
+        })
     }
 }
 
@@ -107,4 +171,27 @@ $tableEntry = '    {  (PVK_TO_WCHARS1)aVkToWch5, 5, sizeof(aVkToWch5[0]) },'
 $c = $c -replace '(static ALLOC_SECTION_LDATA VK_TO_WCHAR_TABLE aVkToWcharTable\[\] = \{\s*)', "`$1$tableEntry`r`n"
 
 Set-Content -Path $CPath -Value $c -Encoding ASCII -NoNewline
+
+$overrideRows = @($vkRows | Where-Object { $_.Scan -match '^[0-9A-F]{2}$' })
+$headerLines = New-Object System.Collections.Generic.List[string]
+$headerLines.Add("")
+$headerLines.Add("/*")
+$headerLines.Add(" * Override scan-code to VK mappings for layouts where shortcuts")
+$headerLines.Add(" * should follow the produced character, not the physical US key.")
+$headerLines.Add(" */")
+foreach ($row in $overrideRows) {
+    $t = "T$($row.Scan)"
+    $expr = Convert-VkToTExpr $row.ResolvedVk
+    $headerLines.Add("#undef $t")
+    $headerLines.Add("#define $t _EQ($expr)")
+}
+$headerText = ($headerLines -join "`r`n")
+
+$h = Get-Content $HPath -Raw
+$includePattern = '#include "kbd\.h"'
+if ($h -notmatch $includePattern) { throw "Could not locate kbd.h include in $HPath" }
+$h = [regex]::Replace($h, $includePattern, ('#include "kbd.h"' + "`r`n" + $headerText), 1)
+Set-Content -Path $HPath -Value $h -Encoding ASCII -NoNewline
+
 Write-Host "Injected $($vkRows.Count) printable VK rows into $CPath"
+Write-Host "Injected $($overrideRows.Count) scan-code VK overrides into $HPath"
