@@ -17,10 +17,14 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 
 $KlcSrc   = Join-Path $RepoRoot 'src\kbdisdv.klc'
 $GenRoot  = Join-Path $RepoRoot 'generated'
-$KbdUtool = "${env:ProgramFiles(x86)}\Microsoft Keyboard Layout Creator 1.4\bin\i386\kbdutool.exe"
+$KbdUtoolCandidates = @(
+    (Join-Path $RepoRoot '.tools\msklc\bin\i386\kbdutool.exe'),
+    "${env:ProgramFiles(x86)}\Microsoft Keyboard Layout Creator 1.4\bin\i386\kbdutool.exe"
+)
+$KbdUtool = $KbdUtoolCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if (-not (Test-Path $KbdUtool)) {
-    throw "kbdutool.exe not found at $KbdUtool. Install MSKLC 1.4 or run scripts/install-kbdutool.ps1."
+if (-not $KbdUtool) {
+    throw "kbdutool.exe not found. Run scripts/install-kbdutool.ps1."
 }
 if (-not (Test-Path $KlcSrc)) {
     throw "Source KLC missing: $KlcSrc"

@@ -17,6 +17,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$toolRoot = Join-Path $RepoRoot '.tools\msklc'
+$repoTool = Join-Path $toolRoot 'bin\i386\kbdutool.exe'
+if (Test-Path $repoTool) {
+    Write-Host "kbdutool already present: $repoTool"
+    return
+}
+
 $installed = 'C:\Program Files (x86)\Microsoft Keyboard Layout Creator 1.4\bin\i386\kbdutool.exe'
 if (Test-Path $installed) {
     Write-Host "kbdutool already present: $installed"
@@ -29,14 +37,32 @@ try {
     $exe = Join-Path $tmp 'MSKLC.exe'
     Invoke-WebRequest -Uri $MsklcUrl -OutFile $exe -UseBasicParsing
 
-    $args = @('/s', '/v"/qn /norestart"')
-    $p = Start-Process -FilePath $exe -ArgumentList $args -Wait -PassThru -NoNewWindow
+    $sevenZip = Get-Command 7z.exe -ErrorAction SilentlyContinue
+    if (-not $sevenZip) { $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue }
+    if (-not $sevenZip) { throw "7-Zip is required to extract MSKLC.exe without running the GUI installer." }
+
+    $sfxOut = Join-Path $tmp 'sfx'
+    New-Item -ItemType Directory -Force -Path $sfxOut | Out-Null
+    & $sevenZip.Source x $exe "-o$sfxOut" -y | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Could not extract MSKLC.exe with 7-Zip (exit $LASTEXITCODE)" }
+
+    $msi = Get-ChildItem $sfxOut -Recurse -Filter 'MSKLC.msi' | Select-Object -First 1
+    if (-not $msi) { throw "MSKLC.msi was not found inside MSKLC.exe" }
+
+    $adminOut = Join-Path $tmp 'admin'
+    New-Item -ItemType Directory -Force -Path $adminOut | Out-Null
+    $p = Start-Process -FilePath msiexec.exe -ArgumentList @('/a', $msi.FullName, '/qn', "TARGETDIR=$adminOut") -Wait -PassThru -NoNewWindow
     if ($p.ExitCode -ne 0) {
-        throw "MSKLC silent install failed with exit $($p.ExitCode)"
+        throw "MSKLC administrative extraction failed with exit $($p.ExitCode)"
     }
-    if (-not (Test-Path $installed)) {
-        throw "kbdutool.exe missing after install; expected $installed"
+    $extractedTool = Join-Path $adminOut 'bin\i386\kbdutool.exe'
+    if (-not (Test-Path $extractedTool)) {
+        throw "kbdutool.exe missing after extraction; expected $extractedTool"
     }
+
+    New-Item -ItemType Directory -Force -Path $toolRoot | Out-Null
+    Copy-Item -Path (Join-Path $adminOut '*') -Destination $toolRoot -Recurse -Force
+    Write-Host "Extracted kbdutool to: $repoTool"
 } finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }

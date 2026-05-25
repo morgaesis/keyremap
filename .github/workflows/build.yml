@@ -12,6 +12,7 @@ jobs:
   build:
     name: Build ${{ matrix.arch }}
     runs-on: windows-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +22,7 @@ jobs:
 
       - name: Install kbdutool
         shell: pwsh
+        timeout-minutes: 5
         run: .\scripts\install-kbdutool.ps1
 
       - name: Generate sources
@@ -40,6 +42,7 @@ jobs:
   qa:
     name: QA golden check
     runs-on: windows-latest
+    timeout-minutes: 10
     needs: build
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
