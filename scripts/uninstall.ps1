@@ -19,21 +19,28 @@ $ErrorActionPreference = 'Stop'
 
 $LayoutsKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32 = Join-Path $env:SystemRoot 'System32'
+$ProductCode = '{8776D3E2-A5D2-4D94-BFDE-7F22F4C88B4A}'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ManifestPath) { $ManifestPath = Join-Path $RepoRoot 'data\layouts.json' }
 
 if (Test-Path $ManifestPath) {
-    $targetDlls = @(Get-Content $ManifestPath -Raw | ConvertFrom-Json | ForEach-Object { [string]$_.dllName } | Where-Object { $_ } | Select-Object -Unique)
+    $manifest = @(Get-Content $ManifestPath -Raw | ConvertFrom-Json)
+    $targetDlls = @($manifest | ForEach-Object { [string]$_.dllName } | Where-Object { $_ } | Select-Object -Unique)
+    $targetTexts = @($manifest | ForEach-Object { [string]$_.displayName } | Where-Object { $_ } | Select-Object -Unique)
 } else {
     $targetDlls = @('kbdisdv.dll')
+    $targetTexts = @('Icelandic Dvorak')
 }
 
-Write-Host "Uninstalling layouts that reference: $($targetDlls -join ', ')"
+Write-Host "Uninstalling keyremap layouts"
 
 $entries = Get-ChildItem $LayoutsKey | Where-Object {
     try {
-        $lf = (Get-ItemProperty $_.PSPath).'Layout File'
-        $targetDlls -contains $lf
+        $props = Get-ItemProperty $_.PSPath
+        $lf = $props.'Layout File'
+        $sameProduct = $props.'Layout Product Code' -eq $ProductCode -and $targetTexts -contains $props.'Layout Text'
+        $sameFile = $targetDlls -contains $lf
+        $sameProduct -or $sameFile
     } catch { $false }
 }
 
@@ -42,7 +49,12 @@ if (-not $entries) {
 }
 
 $removedKlids = @()
+$removedDlls = New-Object System.Collections.Generic.List[string]
 foreach ($entry in $entries) {
+    try {
+        $lf = (Get-ItemProperty $entry.PSPath).'Layout File'
+        if ($lf) { $removedDlls.Add([string]$lf) }
+    } catch { }
     Write-Host "Removing HKLM key: $($entry.PSChildName)"
     $removedKlids += $entry.PSChildName
     Remove-Item -Path $entry.PSPath -Recurse -Force
@@ -71,7 +83,7 @@ public static class W32Delay {
 }
 '@ -ErrorAction SilentlyContinue
 
-foreach ($dllName in $targetDlls) {
+foreach ($dllName in @($targetDlls + $removedDlls | Where-Object { $_ } | Select-Object -Unique)) {
     $path = Join-Path $System32 $dllName
     if (-not (Test-Path $path)) { continue }
     try {

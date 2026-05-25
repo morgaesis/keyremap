@@ -115,4 +115,8 @@ Write-Host "Built: $outDll ($size bytes)"
 # Verify via PE parsing
 & (Join-Path $RepoRoot 'tests\verify-dll.ps1') -DllPath $outDll -ExpectedArch $Arch
 
+if ($Arch -eq 'arm64') {
+    Write-Warning "Plain ARM64 keyboard DLLs do not load in x64-compatible text hosts on Windows ARM. Package x64 for Windows ARM until a true merged ARM64X keyboard DLL is implemented."
+}
+
 Write-Output $outDll

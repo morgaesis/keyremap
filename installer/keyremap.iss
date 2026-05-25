@@ -29,7 +29,9 @@ Source: "..\data\layouts.json"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "layouts.ini"; Flags: dontcopy
 Source: "..\build\x86\kbdisdv.dll"; DestDir: "{app}\build\x86"; Flags: ignoreversion
 Source: "..\build\x64\kbdisdv.dll"; DestDir: "{app}\build\x64"; Flags: ignoreversion
-Source: "..\build\arm64\kbdisdv.dll"; DestDir: "{app}\build\arm64"; Flags: ignoreversion
+; Windows ARM currently uses x64-compatible keyboard DLLs. Plain ARM64 layout
+; DLLs fail in x64-compatible text hosts, and pure ARM64X forwarders load but
+; do not produce characters through ToUnicodeEx.
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -ManifestPath ""{app}\data\layouts.json"" -SelectionFile ""{tmp}\keyremap-selected-layouts.txt"" -Force"; StatusMsg: "Installing selected keyboard layouts..."; Flags: runhidden waituntilterminated
@@ -50,11 +52,41 @@ begin
   Result := Value = '1';
 end;
 
+function IsLayoutInstalled(DisplayName, DllName: String): Boolean;
+var
+  Names: TArrayOfString;
+  I: Integer;
+  Key, Value, ProductCode: String;
+begin
+  Result := False;
+  if not RegGetSubkeyNames(HKEY_LOCAL_MACHINE,
+    'SYSTEM\CurrentControlSet\Control\Keyboard Layouts', Names) then
+    exit;
+
+  for I := 0 to GetArrayLength(Names) - 1 do begin
+    Key := 'SYSTEM\CurrentControlSet\Control\Keyboard Layouts\' + Names[I];
+    if RegQueryStringValue(HKEY_LOCAL_MACHINE, Key, 'Layout Product Code', ProductCode) and
+       (CompareText(ProductCode, '{8776D3E2-A5D2-4D94-BFDE-7F22F4C88B4A}') = 0) and
+       RegQueryStringValue(HKEY_LOCAL_MACHINE, Key, 'Layout Text', Value) and
+       (CompareText(Value, DisplayName) = 0) then begin
+      Result := True;
+      exit;
+    end;
+
+    if (DllName <> '') and
+       RegQueryStringValue(HKEY_LOCAL_MACHINE, Key, 'Layout File', Value) and
+       (CompareText(Value, DllName) = 0) then begin
+      Result := True;
+      exit;
+    end;
+  end;
+end;
+
 procedure InitializeWizard;
 var
   I, Count: Integer;
-  Id, Name, Xkb, Caption, ExistsText, PackagedText: String;
-  Packaged, WindowsExists: Boolean;
+  Id, Name, Xkb, Caption, ExistsText, PackagedText, InstalledText, DllName: String;
+  Packaged, WindowsExists, Installed: Boolean;
 begin
   ExtractTemporaryFile('layouts.ini');
   LayoutIni := ExpandConstant('{tmp}\layouts.ini');
@@ -79,8 +111,10 @@ begin
     Id := GetIniString('Layouts', 'Id' + IntToStr(I), '', LayoutIni);
     Name := GetIniString('Layouts', 'Name' + IntToStr(I), Id, LayoutIni);
     Xkb := GetIniString('Layouts', 'Xkb' + IntToStr(I), '', LayoutIni);
+    DllName := GetIniString('Layouts', 'Dll' + IntToStr(I), '', LayoutIni);
     WindowsExists := BoolFromIni(GetIniString('Layouts', 'WindowsExists' + IntToStr(I), '0', LayoutIni));
     Packaged := BoolFromIni(GetIniString('Layouts', 'Packaged' + IntToStr(I), '0', LayoutIni));
+    Installed := IsLayoutInstalled(Name, DllName);
 
     ExistsText := '';
     if WindowsExists then
@@ -88,8 +122,11 @@ begin
     PackagedText := '  [not built yet]';
     if Packaged then
       PackagedText := '  [ready]';
+    InstalledText := '';
+    if Installed then
+      InstalledText := '  [installed]';
 
-    Caption := Name + '  (' + Xkb + ')' + ExistsText + PackagedText;
+    Caption := Name + '  (' + Xkb + ')' + ExistsText + PackagedText + InstalledText;
     LayoutIds[I - 1] := Id;
     LayoutPackaged[I - 1] := Packaged;
     LayoutList.AddCheckBox(Caption, '', 0, Packaged, Packaged, False, True, nil);

@@ -74,6 +74,52 @@ $LayoutsKey  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32    = Join-Path $env:SystemRoot 'System32'
 $ProductCode = '{8776D3E2-A5D2-4D94-BFDE-7F22F4C88B4A}'
 
+function Get-LayoutPayloadName {
+    param(
+        [Parameter(Mandatory)][string]$SourceDll,
+        [Parameter(Mandatory)][string]$OriginalDllName
+    )
+
+    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $prefix = [System.IO.Path]::GetFileNameWithoutExtension($OriginalDllName).ToLowerInvariant()
+    $prefix = ($prefix -replace '[^a-z0-9]', '')
+    if ($prefix.Length -gt 3) { $prefix = $prefix.Substring(0, 3) }
+    if ($prefix.Length -eq 0) { $prefix = 'kbd' }
+    return ('{0}{1}.dll' -f $prefix, $hash.Substring(0, 8 - $prefix.Length))
+}
+
+function Get-InstalledLayoutEntries {
+    param(
+        [Parameter(Mandatory)][string]$LayoutText,
+        [Parameter(Mandatory)][string[]]$LayoutFiles
+    )
+
+    Get-ChildItem $LayoutsKey | Where-Object {
+        try {
+            $props = Get-ItemProperty $_.PSPath
+            $sameProduct = $props.'Layout Product Code' -eq $ProductCode -and $props.'Layout Text' -eq $LayoutText
+            $sameFile = $LayoutFiles -contains $props.'Layout File'
+            $sameProduct -or $sameFile
+        } catch {
+            $false
+        }
+    }
+}
+
+function Remove-PreloadKlids {
+    param([Parameter(Mandatory)][string[]]$Klids)
+
+    $preload = 'HKCU:\Keyboard Layout\Preload'
+    if (-not (Test-Path $preload)) { return }
+    foreach ($prop in (Get-Item $preload).Property) {
+        $val = (Get-ItemProperty $preload -Name $prop).$prop
+        if ($Klids -contains $val) {
+            Remove-ItemProperty -Path $preload -Name $prop
+            Write-Host "Removed stale preload entry (slot $prop -> $val)"
+        }
+    }
+}
+
 # --- Pick unused KLID + Layout Id ---------------------------------------------
 function Get-AvailableLayoutIds {
     param([Parameter(Mandatory)][string]$BaseLangId)
@@ -123,21 +169,24 @@ function Install-OneLayout {
         throw "DLL not found for '$($Layout.id)' at $sourceDll. This layout is listed but not packaged for $arch yet."
     }
 
-    $existing = Get-ChildItem $LayoutsKey | Where-Object {
-        try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $LayoutFile } catch { $false }
-    }
+    $payloadFile = Get-LayoutPayloadName -SourceDll $sourceDll -OriginalDllName $LayoutFile
+    $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -LayoutFiles @($LayoutFile, $payloadFile))
+    $matchingPayload = @($existing | Where-Object {
+        try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
+    } | Select-Object -First 1)
 
     if ($existing -and -not $Force) {
-        Write-Host "$LayoutText already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
-        $klid = $existing.PSChildName
-        $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
-        if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
+        $entry = if ($matchingPayload) { $matchingPayload[0] } else { $existing[0] }
+        Write-Host "$LayoutText already registered as KLID $($entry.PSChildName). Use -Force to overwrite."
+        $klid = $entry.PSChildName
+        $layoutIdHex = (Get-ItemProperty $entry.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+        if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds -BaseLangId $BaseLangId).LayoutId }
     } else {
-        if ($existing -and $Force) {
-            $klid = $existing.PSChildName
-            $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
-            if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
-            Write-Host "Overwriting existing KLID: $klid (Layout Id: $layoutIdHex)"
+        if ($matchingPayload -and $Force) {
+            $klid = $matchingPayload[0].PSChildName
+            $layoutIdHex = (Get-ItemProperty $matchingPayload[0].PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+            if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds -BaseLangId $BaseLangId).LayoutId }
+            Write-Host "Refreshing existing KLID: $klid (Layout Id: $layoutIdHex)"
         } else {
             $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId
             $klid = $ids.Klid
@@ -146,17 +195,27 @@ function Install-OneLayout {
         }
     }
 
-    $dest = Join-Path $System32 $LayoutFile
+    $dest = Join-Path $System32 $payloadFile
     Write-Host "Copying $sourceDll -> $dest"
     Copy-Item -Path $sourceDll -Destination $dest -Force
+
+    $staleEntries = @($existing | Where-Object { $_.PSChildName -ne $klid })
+    if ($staleEntries.Count -gt 0) {
+        $staleKlids = @($staleEntries | ForEach-Object { $_.PSChildName })
+        Remove-PreloadKlids -Klids $staleKlids
+        foreach ($entry in $staleEntries) {
+            Write-Host "Removing stale HKLM key: $($entry.PSChildName)"
+            Remove-Item -Path $entry.PSPath -Recurse -Force
+        }
+    }
 
     $keyPath = Join-Path $LayoutsKey $klid
     if (-not (Test-Path $keyPath)) {
         New-Item -Path $LayoutsKey -Name $klid -Force | Out-Null
     }
-    Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $LayoutFile -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $payloadFile -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
-    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$LayoutFile,-1000" -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$payloadFile,-1000" -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Id' -Value $layoutIdHex -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
     Write-Host "Registered at $keyPath"
