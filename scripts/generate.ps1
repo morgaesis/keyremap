@@ -49,4 +49,6 @@ Get-ChildItem $GenRoot -Include '*.C', '*.H', '*.DEF', '*.RC' -File | ForEach-Ob
     Rename-Item -LiteralPath $_.FullName -NewName $new -Force
 }
 
+& (Join-Path $PSScriptRoot 'patch-generated.ps1') -KlcPath $KlcSrc -CPath (Join-Path $GenRoot 'kbdisdv.c')
+
 Write-Host "Generated sources under: $GenRoot"
