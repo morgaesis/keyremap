@@ -32,6 +32,8 @@ foreach ($arch in @('x86', 'x64', 'arm64')) {
     }
 }
 
+& (Join-Path $PSScriptRoot 'export-installer-layouts.ps1')
+
 & $InnoCompiler (Join-Path $RepoRoot 'installer\keyremap.iss')
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compiler failed with exit $LASTEXITCODE" }
 

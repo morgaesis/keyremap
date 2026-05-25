@@ -1,0 +1,14 @@
+[
+  {
+    "id": "is-dvorak",
+    "displayName": "Icelandic Dvorak",
+    "xkbLayout": "is",
+    "xkbVariant": "dvorak",
+    "windowsFamily": "Icelandic",
+    "windowsAlreadyExists": false,
+    "packaged": true,
+    "baseLangId": "040f",
+    "dllName": "kbdisdv.dll",
+    "description": "Linux xkeyboard-config is(dvorak)"
+  }
+]

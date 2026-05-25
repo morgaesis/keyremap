@@ -2,19 +2,17 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Install the Icelandic Dvorak keyboard layout DLL system-wide.
+  Install selected keyremap keyboard layout DLLs system-wide.
 
 .DESCRIPTION
-  Copies kbdisdv.dll into System32, registers it under HKLM's keyboard layout
-  list, adds it to the current user's input preload, and calls LoadKeyboardLayoutW
-  so Windows can activate it without requiring sign-out.
+  Copies selected layout DLLs into System32, registers them under HKLM's
+  keyboard layout list, adds them to the current user's input preload, and
+  calls LoadKeyboardLayoutW so Windows can activate them without requiring
+  sign-out.
 
   After install:
     Win+Space should list "Icelandic Dvorak" immediately. If not, sign out
     and back in.
-
-.PARAMETER DllPath
-  Path to the DLL. Defaults to build\<native-arch>\kbdisdv.dll.
 
 .PARAMETER AddToCurrentUser
   Add to current user's preload so it shows in Win+Space. Default: true.
@@ -25,6 +23,12 @@
 
 [CmdletBinding()]
 param(
+    [string[]]$LayoutId,
+
+    [string]$SelectionFile,
+
+    [string]$ManifestPath,
+
     [string]$DllPath,
 
     [bool]$AddToCurrentUser = $true,
@@ -35,34 +39,45 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $ManifestPath) { $ManifestPath = Join-Path $RepoRoot 'data\layouts.json' }
+if (-not (Test-Path $ManifestPath)) { throw "Layout manifest not found: $ManifestPath" }
 
-if (-not $DllPath) {
-    $osArch = try {
-        (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).OSArchitecture
-    } catch {
-        [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-    }
-    $arch = switch -Regex ($osArch) {
-        'ARM\s*64|Arm64' { 'arm64'; break }
-        '64|X64'         { 'x64'; break }
-        '32|X86'         { 'x86'; break }
-        default          { throw "Unsupported OS architecture: $osArch" }
-    }
-    $DllPath = Join-Path $RepoRoot "build\$arch\kbdisdv.dll"
+if ($SelectionFile) {
+    if (-not (Test-Path $SelectionFile)) { throw "Selection file not found: $SelectionFile" }
+    $LayoutId += @(Get-Content $SelectionFile | Where-Object { $_ -and $_.Trim() })
 }
-if (-not (Test-Path $DllPath)) {
-    throw "DLL not found at $DllPath. Build with scripts\build.ps1 -Arch <arch>, or download a release asset."
+if (-not $LayoutId -or $LayoutId.Count -eq 0) { $LayoutId = @('is-dvorak') }
+$LayoutId = @($LayoutId | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+
+$manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+$layoutsById = @{}
+foreach ($layout in $manifest) { $layoutsById[[string]$layout.id] = $layout }
+
+$osArch = try {
+    (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).OSArchitecture
+} catch {
+    [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+}
+$arch = switch -Regex ($osArch) {
+    'ARM\s*64|Arm64' {
+        # Plain ARM64 keyboard DLLs cannot be loaded by x64-compatible hosts.
+        # Until ARM64EC/ARM64X builds are produced, prefer x64 on Windows ARM.
+        'x64'
+        break
+    }
+    '64|X64' { 'x64'; break }
+    '32|X86' { 'x86'; break }
+    default { throw "Unsupported OS architecture: $osArch" }
 }
 
-$LayoutFile  = 'kbdisdv.dll'
-$LayoutText  = 'Icelandic Dvorak'
-$BaseLangId  = '040f'
 $LayoutsKey  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32    = Join-Path $env:SystemRoot 'System32'
 $ProductCode = '{8776D3E2-A5D2-4D94-BFDE-7F22F4C88B4A}'
 
 # --- Pick unused KLID + Layout Id ---------------------------------------------
 function Get-AvailableLayoutIds {
+    param([Parameter(Mandatory)][string]$BaseLangId)
+
     $existing = Get-ChildItem $LayoutsKey
     $existingKlids = $existing | ForEach-Object { $_.PSChildName }
     $existingLayoutIds = @{}
@@ -89,63 +104,81 @@ function Get-AvailableLayoutIds {
     return @{ Klid = $klid; LayoutId = $layoutId }
 }
 
-# Find entry already pointing at this DLL.
-$existing = Get-ChildItem $LayoutsKey | Where-Object {
-    try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $LayoutFile } catch { $false }
-}
+function Install-OneLayout {
+    param([Parameter(Mandatory)]$Layout)
 
-if ($existing -and -not $Force) {
-    Write-Host "Icelandic Dvorak already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
-    $klid = $existing.PSChildName
-    $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
-    if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
-} else {
-    if ($existing -and $Force) {
+    $LayoutFile = [string]$Layout.dllName
+    $LayoutText = [string]$Layout.displayName
+    $BaseLangId = [string]$Layout.baseLangId
+    if (-not $LayoutFile -or -not $LayoutText -or -not $BaseLangId) {
+        throw "Manifest entry '$($Layout.id)' is missing dllName/displayName/baseLangId"
+    }
+
+    $sourceDll = if ($DllPath -and $LayoutId.Count -eq 1) {
+        $DllPath
+    } else {
+        Join-Path $RepoRoot "build\$arch\$LayoutFile"
+    }
+    if (-not (Test-Path $sourceDll)) {
+        throw "DLL not found for '$($Layout.id)' at $sourceDll. This layout is listed but not packaged for $arch yet."
+    }
+
+    $existing = Get-ChildItem $LayoutsKey | Where-Object {
+        try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $LayoutFile } catch { $false }
+    }
+
+    if ($existing -and -not $Force) {
+        Write-Host "$LayoutText already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
         $klid = $existing.PSChildName
         $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
         if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
-        Write-Host "Overwriting existing KLID: $klid (Layout Id: $layoutIdHex)"
     } else {
-        $ids = Get-AvailableLayoutIds
-        $klid = $ids.Klid
-        $layoutIdHex = $ids.LayoutId
-        Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex"
+        if ($existing -and $Force) {
+            $klid = $existing.PSChildName
+            $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+            if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
+            Write-Host "Overwriting existing KLID: $klid (Layout Id: $layoutIdHex)"
+        } else {
+            $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId
+            $klid = $ids.Klid
+            $layoutIdHex = $ids.LayoutId
+            Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex"
+        }
     }
-}
 
-# --- Copy DLL ------------------------------------------------------------------
-$dest = Join-Path $System32 $LayoutFile
-Write-Host "Copying $DllPath -> $dest"
-Copy-Item -Path $DllPath -Destination $dest -Force
+    $dest = Join-Path $System32 $LayoutFile
+    Write-Host "Copying $sourceDll -> $dest"
+    Copy-Item -Path $sourceDll -Destination $dest -Force
 
-# --- Registry -----------------------------------------------------------------
-$keyPath = Join-Path $LayoutsKey $klid
-if (-not (Test-Path $keyPath)) {
-    New-Item -Path $LayoutsKey -Name $klid -Force | Out-Null
-}
-Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $LayoutFile -Type String
-Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
-Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$LayoutFile,-1000" -Type String
-Set-ItemProperty -Path $keyPath -Name 'Layout Id' -Value $layoutIdHex -Type String
-Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
-Write-Host "Registered at $keyPath"
-
-# --- Current user preload -----------------------------------------------------
-if ($AddToCurrentUser) {
-    $preload = 'HKCU:\Keyboard Layout\Preload'
-    if (-not (Test-Path $preload)) { New-Item -Path $preload -Force | Out-Null }
-    $alreadyPreloaded = (Get-Item $preload).Property | ForEach-Object {
-        (Get-ItemProperty $preload -Name $_).$_
-    } | Where-Object { $_ -eq $klid }
-    if (-not $alreadyPreloaded) {
-        $existingNums = (Get-Item $preload).Property | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
-        $maxNum = if ($existingNums) { ($existingNums | Measure-Object -Maximum).Maximum } else { 0 }
-        $slot = ($maxNum + 1).ToString()
-        Set-ItemProperty -Path $preload -Name $slot -Value $klid -Type String
-        Write-Host "Added to current user preload (slot $slot)"
-    } else {
-        Write-Host "Already in current user preload list"
+    $keyPath = Join-Path $LayoutsKey $klid
+    if (-not (Test-Path $keyPath)) {
+        New-Item -Path $LayoutsKey -Name $klid -Force | Out-Null
     }
+    Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $LayoutFile -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$LayoutFile,-1000" -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Id' -Value $layoutIdHex -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
+    Write-Host "Registered at $keyPath"
+
+    if ($AddToCurrentUser) {
+        $preload = 'HKCU:\Keyboard Layout\Preload'
+        if (-not (Test-Path $preload)) { New-Item -Path $preload -Force | Out-Null }
+        $alreadyPreloaded = (Get-Item $preload).Property | ForEach-Object {
+            (Get-ItemProperty $preload -Name $_).$_
+        } | Where-Object { $_ -eq $klid }
+        if (-not $alreadyPreloaded) {
+            $existingNums = (Get-Item $preload).Property | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
+            $maxNum = if ($existingNums) { ($existingNums | Measure-Object -Maximum).Maximum } else { 0 }
+            $slot = ($maxNum + 1).ToString()
+            Set-ItemProperty -Path $preload -Name $slot -Value $klid -Type String
+            Write-Host "Added to current user preload (slot $slot)"
+        } else {
+            Write-Host "Already in current user preload list"
+        }
+    }
+
+    return $klid
 }
 
 # --- Live activation (no sign-out required) -----------------------------------
@@ -171,34 +204,43 @@ public static class KbdActivate {
 }
 '@ -ErrorAction SilentlyContinue
 
-try {
-    $hkl = [KbdActivate]::LoadKeyboardLayout(
-        $klid,
-        [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_SUBSTITUTE_OK -bor [KbdActivate]::KLF_REORDER)
-    if ($hkl -eq [IntPtr]::Zero) {
-        $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Warning "LoadKeyboardLayout returned NULL (error $code). You may need to sign out."
-    } else {
-        Write-Host ("LoadKeyboardLayout OK (HKL=0x{0:X})" -f $hkl.ToInt64())
+$installedKlids = @()
+foreach ($id in $LayoutId) {
+    if (-not $layoutsById.ContainsKey($id)) { throw "Unknown layout id '$id' in manifest $ManifestPath" }
+    $layout = $layoutsById[$id]
+    if (-not [bool]$layout.packaged) { throw "Layout '$id' is not packaged yet." }
+    $installedKlids += Install-OneLayout -Layout $layout
+}
+
+foreach ($klid in $installedKlids) {
+    try {
+        $hkl = [KbdActivate]::LoadKeyboardLayout(
+            $klid,
+            [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_SUBSTITUTE_OK -bor [KbdActivate]::KLF_REORDER)
+        if ($hkl -eq [IntPtr]::Zero) {
+            $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Write-Warning "LoadKeyboardLayout($klid) returned NULL (error $code). You may need to sign out."
+        } else {
+            Write-Host ("LoadKeyboardLayout OK for {0} (HKL=0x{1:X})" -f $klid, $hkl.ToInt64())
+        }
+        $result = [UIntPtr]::Zero
+        [void][KbdActivate]::SendMessageTimeout(
+            [KbdActivate]::HWND_BROADCAST,
+            [KbdActivate]::WM_INPUTLANGCHANGEREQUEST,
+            [UIntPtr]::Zero, $hkl,
+            [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
+            [ref]$result)
+        [void][KbdActivate]::SendMessageTimeout(
+            [KbdActivate]::HWND_BROADCAST,
+            [KbdActivate]::WM_SETTINGCHANGE,
+            [UIntPtr]::Zero, [IntPtr]::Zero,
+            [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
+            [ref]$result)
+    } catch {
+        Write-Warning "Live activation failed for ${klid}: $_. Sign out and back in if needed."
     }
-    $result = [UIntPtr]::Zero
-    [void][KbdActivate]::SendMessageTimeout(
-        [KbdActivate]::HWND_BROADCAST,
-        [KbdActivate]::WM_INPUTLANGCHANGEREQUEST,
-        [UIntPtr]::Zero, $hkl,
-        [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
-        [ref]$result)
-    [void][KbdActivate]::SendMessageTimeout(
-        [KbdActivate]::HWND_BROADCAST,
-        [KbdActivate]::WM_SETTINGCHANGE,
-        [UIntPtr]::Zero, [IntPtr]::Zero,
-        [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
-        [ref]$result)
-    Write-Host "Broadcast WM_INPUTLANGCHANGEREQUEST / WM_SETTINGCHANGE."
-} catch {
-    Write-Warning "Live activation failed: $_. Sign out and back in if needed."
 }
 
 Write-Host ""
-Write-Host "==> Install complete: $LayoutText"
-Write-Host "    Win+Space should list it now."
+Write-Host "==> Install complete: $($LayoutId -join ', ')"
+Write-Host "    Win+Space should list installed layouts now."

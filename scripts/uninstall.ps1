@@ -2,21 +2,31 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Uninstall Icelandic Dvorak.
+  Uninstall keyremap keyboard layouts.
 
 .DESCRIPTION
-  Removes HKLM keyboard-layout registry entries pointing at kbdisdv.dll,
-  removes matching HKCU preload slots, and deletes the DLL from System32.
+  Removes HKLM keyboard-layout registry entries pointing at DLLs listed in the
+  layout manifest, removes matching HKCU preload slots, and deletes the DLLs
+  from System32.
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$ManifestPath
+)
 
 $ErrorActionPreference = 'Stop'
 
 $LayoutsKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32 = Join-Path $env:SystemRoot 'System32'
-$targetDlls = @('kbdisdv.dll')
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $ManifestPath) { $ManifestPath = Join-Path $RepoRoot 'data\layouts.json' }
+
+if (Test-Path $ManifestPath) {
+    $targetDlls = @(Get-Content $ManifestPath -Raw | ConvertFrom-Json | ForEach-Object { [string]$_.dllName } | Where-Object { $_ } | Select-Object -Unique)
+} else {
+    $targetDlls = @('kbdisdv.dll')
+}
 
 Write-Host "Uninstalling layouts that reference: $($targetDlls -join ', ')"
 

@@ -2,9 +2,9 @@
 
 Native Windows keyboard layouts ported from Linux xkeyboard-config.
 
-The first target is Linux `is(dvorak)`: Icelandic Dvorak. The result is a
-Windows `kbd*.dll`, not a background remapper, so it can be registered as a
-normal Windows keyboard layout and selected with `Win+Space`.
+The target is broad xkeyboard-config coverage: Linux keyboard layouts packaged
+as Windows `kbd*.dll` files, not background remappers, so selected layouts can
+be registered as normal Windows keyboard layouts and selected with `Win+Space`.
 
 ## Why This Path
 
@@ -28,10 +28,14 @@ especially on Windows 11 ARM64. This repo only uses MSKLC's `kbdutool.exe` to
 convert a `.klc` source file into C tables, then builds those tables with a
 modern compiler.
 
-## Layout
+## Layouts
 
-`src\kbdisdv.klc` is the source of truth. It is a Windows KLC port of
-xkeyboard-config `is(dvorak)`:
+`data\layouts.json` is the installable-layout manifest. The installer also
+shows the broader Linux/Windows candidate catalog generated from
+xkeyboard-config, including layouts not built yet.
+
+The first packaged layout is `is-dvorak`. `src\kbdisdv.klc` is its source of
+truth. It is a Windows KLC port of xkeyboard-config `is(dvorak)`:
 
 - base: `us(dvorak)`
 - overlay: `eurosign(4)`
@@ -137,3 +141,12 @@ keyboard registry, and writes:
 This is intentionally review-first. Many XKB entries depend on Compose,
 IME-like behavior, higher-level groups, or hardware assumptions that are not
 safe to auto-ship as KLC DLLs without inspection.
+
+The GUI installer displays this catalog. Layouts marked `[ready]` have packaged
+DLLs and can be selected for installation. Layouts marked `[not built yet]` are
+visible so the full Linux target set is clear, but they are disabled until the
+bulk generator/build pipeline has produced verified DLLs for them.
+
+On Windows 11 ARM, plain ARM64 keyboard DLLs are not enough for x64-compatible
+text hosts. Until ARM64EC/ARM64X keyboard DLLs are produced, the installer uses
+the x64-compatible payload on ARM systems.
