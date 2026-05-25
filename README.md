@@ -1,135 +1,139 @@
 # keyremap
 
-Native Windows keyboard layouts ported from Linux xkb — starting with Icelandic
-Dvorak, eventually covering the full xkeyboard-config catalogue so users can
-move their Linux keyboard muscle memory to Windows with no background program.
+Native Windows keyboard layouts ported from Linux xkeyboard-config.
 
-## Why
+The first target is Linux `is(dvorak)`: Icelandic Dvorak. The result is a
+Windows `kbd*.dll`, not a background remapper, so it can be registered as a
+normal Windows keyboard layout and selected with `Win+Space`.
 
-EPKL, AutoHotkey, PowerToys Keyboard Manager, and Kanata all work by hooking
-keys from a running process. If the process stops or crashes, the remaps go
-away. They also do not appear in Windows' standard layout picker — Win+Space
-will not swap them with "English (US)" or "Icelandic" when a coworker borrows
-your machine.
+## Why This Path
 
-A native kbd\*.dll is different. Windows loads it into winlogon and every
-process, it appears in the Settings layout list, and Win+Space toggles to and
-from it instantly. Nothing to start, nothing to stop.
+Windows keyboard layouts are DLLs loaded by the window manager. Microsoft
+documents the model in the Windows Driver Samples: a layout DLL contains
+scan-code to virtual-key tables plus virtual-key to character tables, and
+exports `KbdLayerDescriptor`.
 
-## Status
+Windows discovers installed layouts from:
 
-| Layout | xkb name | Status |
-|---|---|---|
-| Icelandic Dvorak | `is(dvorak)` | **MVP** — see `src/kbdisdv.klc` |
-| *(everything else)* | various | planned — see `docs/roadmap.md` |
+```text
+HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\<KLID>
+```
 
-Built on Windows 11 ARM64 (Snapdragon X), x64, and x86. CI produces all three.
+with values such as `Layout File` and `Layout Text`. The installer in this
+repo registers `kbdisdv.dll` there, adds it to the current user's preload list,
+and calls `LoadKeyboardLayoutW`.
 
-## Install (end user)
+MSKLC's GUI and generated installer are not the dependable part of the stack,
+especially on Windows 11 ARM64. This repo only uses MSKLC's `kbdutool.exe` to
+convert a `.klc` source file into C tables, then builds those tables with a
+modern compiler.
 
-1. Download the latest release zip from
-   [Releases](https://github.com/morgaesis/keyremap/releases).
-2. Unzip, open PowerShell as Administrator in the unzipped folder:
-   ```powershell
-   .\install.ps1
-   ```
-3. Win+Space immediately lists **Icelandic Dvorak**. (No sign-out needed —
-   the installer calls `LoadKeyboardLayoutW` and broadcasts an input-language
-   refresh so Windows picks it up live. If the picker still doesn't show it,
-   a sign-out is the fallback.)
+## Layout
 
-To remove:
+`src\kbdisdv.klc` is the source of truth. It is a Windows KLC port of
+xkeyboard-config `is(dvorak)`:
+
+- base: `us(dvorak)`
+- overlay: `eurosign(4)`
+- AltGr: `level3(ralt_switch)`
+- overrides: `„ “ ð Ð æ Æ ö Ö þ Þ ß ẞ – — €`
+
+The US Dvorak dead keys inherited by xkeyboard-config are represented as
+Windows `DEADKEY` tables.
+
+## Build
+
+Prerequisites:
+
+- Microsoft Keyboard Layout Creator 1.4, for `kbdutool.exe`
+- Visual Studio 2022 Build Tools with Desktop C++
+- Windows 10/11 SDK, for `kbd.h`
+- For ARM64 output: `MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools`
+
+Build:
+
 ```powershell
-.\uninstall.ps1
+.\scripts\build.ps1 -Arch x64
+.\scripts\build.ps1 -Arch arm64
 ```
 
-## The layout
+Output:
 
-Faithful port of the Linux `is(dvorak)` variant: US Dvorak base + Icelandic
-AltGr overlays. AltGr + key gives the Icelandic-specific characters; Shift +
-AltGr gives the uppercase.
-
-| Where | AltGr | Shift+AltGr |
-|---|---|---|
-| `4` | € | € |
-| `'` (Dvorak position of QWERTY `q`) | dead_acute | dead_diaeresis |
-| `o` | ö | Ö |
-| `d` | ð | Ð |
-| `s` | æ | Æ |
-| `-` | – (en dash) | — (em dash) |
-| `b` | ß | ẞ |
-| `z` | þ | Þ |
-| `/` | „ | " |
-
-**Accented vowels** (á é í ó ú ý) are produced via the acute dead key:
-AltGr+`'` then the vowel. All eleven dead keys from us(dvorak) are preserved
-(acute, diaeresis, grave, tilde, circumflex, cedilla, caron, above-dot, breve,
-ogonek, double-acute) with comprehensive compose tables for Western European,
-Nordic, Central European, and Turkish characters.
-
-See [`docs/layout.md`](docs/layout.md) for the full key table.
-
-## Build (from source)
-
-You need a Windows machine (any arch) with:
-
-1. **Visual Studio 2022 Build Tools** with Desktop C++, MSVC v143 ARM64
-   build tools, and the **Windows 11 SDK** (the SDK provides `kbd.h`):
-   ```powershell
-   winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --passive"
-   ```
-2. **Microsoft Keyboard Layout Creator 1.4** for `kbdutool.exe` — free download
-   from Microsoft. The build will auto-download and silent-install it if
-   missing, via `scripts\install-msklc.ps1`.
-3. From the repo root, in PowerShell:
-   ```powershell
-   .\scripts\build.ps1 -Arch arm64
-   # or x64, x86
-   ```
-   Output: `build\<arch>\kbdisdv.dll`.
-
-The pipeline is:
-- `src\kbdisdv.klc` is the source of truth.
-- `scripts\generate.ps1` runs MSKLC's `kbdutool.exe` to produce
-  `generated\kbdisdv.{c,h,def,rc}`. `generated/` is gitignored — we do not
-  commit Microsoft-copyrighted kbdutool output into an MIT repo. CI runs
-  this step fresh on every build.
-- `scripts\build.ps1 -Arch <arch>` compiles the generated sources into
-  `build\<arch>\kbdisdv.dll` via MSVC.
-
-## Architecture
-
-```
-src/kbdisdv.klc                    ← source of truth, committed
-        │
-        │  scripts\generate.ps1  (MSKLC's kbdutool.exe)
-        ▼
-generated/kbdisdv.{c,h,def,rc}     ← gitignored, regenerated every build
-        │
-        │  scripts\build.ps1  (MSVC, per-arch)
-        ▼
-build/<arch>/kbdisdv.dll
-        │
-        │  scripts\install.ps1  (Administrator)
-        ▼
-%SystemRoot%\System32\kbdisdv.dll + HKLM registry entry
-        │
-        │  LoadKeyboardLayoutW + WM_INPUTLANGCHANGEREQUEST broadcast
-        ▼
-Available in Win+Space immediately — no sign-out required.
+```text
+build\<arch>\kbdisdv.dll
 ```
 
-## Roadmap
+The build script verifies the PE machine type and `KbdLayerDescriptor` export.
+It also checks that `VsDevCmd` selected the requested compiler architecture;
+this catches the common ARM64 failure where Visual Studio silently leaves
+`cl.exe` pointed at x64.
 
-- [x] Icelandic Dvorak (`is(dvorak)`)
-- [ ] CapsLock as AltGr overlay (feature flag in KLC)
-- [ ] Automated xkb → KLC converter (targeting the 100+ layouts in
-      xkeyboard-config)
-- [ ] GUI installer / picker for end users
-- [ ] Custom layouts from user-submitted KLCs
+## Install
 
-## License
+For a visible setup wizard, build and run the installer:
 
-MIT. Layout data is derived from xkeyboard-config (MIT). The `kbd.h` header
-used at compile time is Microsoft's WDK — not redistributed, fetched locally.
-See `LICENSE` and `docs/attribution.md`.
+```powershell
+.\scripts\build-installer.ps1
+.\installer\Output\keyremap-setup.exe
+```
+
+The installer requests elevation, copies the architecture-matched DLL, registers
+the keyboard layout, and adds an uninstaller entry in Windows.
+
+For script-based local development, open PowerShell as Administrator:
+
+```powershell
+.\scripts\install.ps1
+```
+
+To install a specific DLL:
+
+```powershell
+.\scripts\install.ps1 -DllPath .\build\arm64\kbdisdv.dll
+```
+
+Uninstall:
+
+```powershell
+.\scripts\uninstall.ps1
+```
+
+## Verification Checklist
+
+After installing on the Windows 11 ARM64 laptop, test:
+
+- `Win+Space` shows `Icelandic Dvorak`
+- Notepad: base Dvorak keys and AltGr Icelandic letters
+- Start search and Settings search
+- Microsoft Store or another WinUI/UWP text field
+- elevated prompt text entry
+- sign-out/sign-in persistence
+
+## Sources
+
+- xkeyboard-config `symbols/is`, variant `dvorak`
+- xkeyboard-config `symbols/us`, variant `dvorak`
+- Microsoft Keyboard Layout Samples
+- Microsoft Keyboard Identifiers documentation
+- Microsoft `LoadKeyboardLayout` documentation
+
+See [docs/research.md](docs/research.md) for the investigation notes.
+
+## Bulk Linux Layout Catalog
+
+The repo includes a review pipeline for broader xkeyboard-config coverage:
+
+```powershell
+.\tools\generate-layout-catalog.ps1
+```
+
+It parses xkeyboard-config metadata, compares it with the local Windows
+keyboard registry, and writes:
+
+- `data\windows-keyboards.local.json`
+- `data\xkb-windows-candidates.json`
+- `docs\layout-candidates.md`
+
+This is intentionally review-first. Many XKB entries depend on Compose,
+IME-like behavior, higher-level groups, or hardware assumptions that are not
+safe to auto-ship as KLC DLLs without inspection.

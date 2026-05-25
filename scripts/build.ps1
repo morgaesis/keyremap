@@ -1,18 +1,14 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Compile a keyboard layout DLL variant for a target architecture.
+  Compile the Icelandic Dvorak keyboard layout DLL for a target architecture.
 
 .DESCRIPTION
-  Takes the generated C/H/DEF/RC sources for a specified variant
-  (see scripts/variants.ps1) and compiles them into a native kbd*.dll
-  for the requested architecture via MSVC.
+  Takes generated\kbdisdv.{c,h,def,rc} and compiles it into a native
+  kbdisdv.dll via MSVC.
 
 .PARAMETER Arch
   x86, x64, or arm64. Default: arm64.
-
-.PARAMETER Variant
-  default, caps-altgr, caps-esc, caps-ctrl. Default: default.
 
 .PARAMETER OutDir
   Output directory. Defaults to build\<arch>\.
@@ -23,8 +19,6 @@ param(
     [ValidateSet('x86', 'x64', 'arm64')]
     [string]$Arch = 'arm64',
 
-    [string]$Variant = 'default',
-
     [string]$OutDir
 )
 
@@ -32,16 +26,14 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'variants.ps1')
-$spec = Get-VariantSpec -Name $Variant
 
-$SrcDir = Join-Path $RepoRoot "generated\$Variant"
+$SrcDir = Join-Path $RepoRoot 'generated'
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot "build\$Arch" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-if (-not (Test-Path (Join-Path $SrcDir ($spec.BaseName + '.c')))) {
-    Write-Host "generated\$Variant not populated — running generate.ps1 -Variant $Variant"
-    & (Join-Path $PSScriptRoot 'generate.ps1') -Variant $Variant
+if (-not (Test-Path (Join-Path $SrcDir 'kbdisdv.c'))) {
+    Write-Host "generated not populated; running generate.ps1"
+    & (Join-Path $PSScriptRoot 'generate.ps1')
     if ($LASTEXITCODE -ne 0) { throw "generate.ps1 failed" }
 }
 
@@ -72,12 +64,14 @@ if (-not $kbdH) {
 Write-Host "Using kbd.h from: $kbdH"
 
 $vsArch = @{ 'x86' = 'x86'; 'x64' = 'amd64'; 'arm64' = 'arm64' }[$Arch]
+$machineName = @{ 'x86' = 'x86'; 'x64' = 'x64'; 'arm64' = 'ARM64' }[$Arch]
+$hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'amd64' }
 
-$base = $spec.BaseName
+$base = 'kbdisdv'
 $cSrc = Join-Path $SrcDir "$base.c"
 $rcSrc = Join-Path $SrcDir "$base.rc"
 $defSrc = Join-Path $SrcDir "$base.def"
-$outDll = Join-Path $OutDir $spec.DllName
+$outDll = Join-Path $OutDir 'kbdisdv.dll'
 $resFile = Join-Path $OutDir "$base.res"
 $objFile = Join-Path $OutDir "$base.obj"
 
@@ -87,7 +81,13 @@ foreach ($path in @($cSrc, $rcSrc, $defSrc)) {
 
 $buildCmd = @"
 @echo on
-call "$vsDevCmd" -arch=$vsArch -host_arch=amd64 -no_logo || exit /b 1
+call "$vsDevCmd" -arch=$vsArch -host_arch=$hostArch -no_logo || exit /b 1
+
+cl.exe /Bv 2>&1 | findstr /C:"for $machineName" >nul || (
+    echo ERROR: VsDevCmd did not select a $machineName compiler.
+    echo Install "MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools" for arm64 builds.
+    exit /b 10
+)
 
 rc.exe /nologo /fo "$resFile" "$rcSrc" || exit /b 2
 
@@ -104,7 +104,7 @@ link.exe /nologo /DLL /NOENTRY /NODEFAULTLIB /SUBSYSTEM:NATIVE ^
 $bat = Join-Path $OutDir "_build-$base.bat"
 $buildCmd | Set-Content -Encoding ASCII -Path $bat
 
-Write-Host "Building $($spec.DllName) ($Arch, variant $Variant)..."
+Write-Host "Building kbdisdv.dll ($Arch)..."
 cmd.exe /c "`"$bat`""
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
 

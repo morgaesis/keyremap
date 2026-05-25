@@ -2,35 +2,21 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Uninstall any Icelandic Dvorak variant(s) previously installed.
+  Uninstall Icelandic Dvorak.
 
 .DESCRIPTION
-  Removes HKLM keyboard-layout registry entries pointing at any kbdisdv*.dll,
-  removes matching HKCU preload slots, and deletes the DLLs from System32.
-  Touches nothing else.
-
-.PARAMETER Variant
-  Optional. Uninstall only this one: default, caps-altgr, caps-esc, caps-ctrl.
-  When omitted, all variants are removed.
+  Removes HKLM keyboard-layout registry entries pointing at kbdisdv.dll,
+  removes matching HKCU preload slots, and deletes the DLL from System32.
 #>
 
 [CmdletBinding()]
-param(
-    [string]$Variant
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'variants.ps1')
-
 $LayoutsKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32 = Join-Path $env:SystemRoot 'System32'
-
-$targetDlls = if ($Variant) {
-    @((Get-VariantSpec -Name $Variant).DllName)
-} else {
-    @(Get-VariantNames | ForEach-Object { (Get-VariantSpec -Name $_).DllName })
-}
+$targetDlls = @('kbdisdv.dll')
 
 Write-Host "Uninstalling layouts that reference: $($targetDlls -join ', ')"
 

@@ -20,5 +20,4 @@ build/
 tmp/
 
 generated/
-
-src/generated-klc/
+installer/Output/

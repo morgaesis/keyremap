@@ -5,25 +5,16 @@
   Install the Icelandic Dvorak keyboard layout DLL system-wide.
 
 .DESCRIPTION
-  Picks a CapsLock behavior variant (default / AltGr / Esc / Ctrl), copies
-  the matching DLL into System32, registers it under HKLM's keyboard layout
-  list, adds it to the current user's input preload, and calls
-  LoadKeyboardLayoutW so Windows activates it without requiring sign-out.
+  Copies kbdisdv.dll into System32, registers it under HKLM's keyboard layout
+  list, adds it to the current user's input preload, and calls LoadKeyboardLayoutW
+  so Windows can activate it without requiring sign-out.
 
   After install:
-    Win+Space should list "Icelandic Dvorak" (or the variant's display name)
-    immediately. If not, sign out and back in.
+    Win+Space should list "Icelandic Dvorak" immediately. If not, sign out
+    and back in.
 
 .PARAMETER DllPath
-  Path to the DLL. Defaults to build\<arch>\<variant-dll-name> based on the
-  running OS architecture and -CapsAction.
-
-.PARAMETER CapsAction
-  What the CapsLock key does:
-    None   — CapsLock stays CapsLock (kbdisdv.dll)
-    AltGr  — CapsLock is a second AltGr (kbdisdv-caps-altgr.dll)
-    Esc    — CapsLock is Escape (kbdisdv-caps-esc.dll)
-    Ctrl   — CapsLock is Left Control (kbdisdv-caps-ctrl.dll)
+  Path to the DLL. Defaults to build\<native-arch>\kbdisdv.dll.
 
 .PARAMETER AddToCurrentUser
   Add to current user's preload so it shows in Win+Space. Default: true.
@@ -36,9 +27,6 @@
 param(
     [string]$DllPath,
 
-    [ValidateSet('None', 'AltGr', 'Esc', 'Ctrl')]
-    [string]$CapsAction = 'None',
-
     [bool]$AddToCurrentUser = $true,
 
     [switch]$Force
@@ -47,32 +35,27 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'variants.ps1')
-
-# Map CapsAction to variant
-$variantName = switch ($CapsAction) {
-    'None'  { 'default' }
-    'AltGr' { 'caps-altgr' }
-    'Esc'   { 'caps-esc' }
-    'Ctrl'  { 'caps-ctrl' }
-}
-$spec = Get-VariantSpec -Name $variantName
 
 if (-not $DllPath) {
-    $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
-        'X64'   { 'x64' }
-        'Arm64' { 'arm64' }
-        'X86'   { 'x86' }
-        default { throw "Unsupported OS architecture: $_" }
+    $osArch = try {
+        (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).OSArchitecture
+    } catch {
+        [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     }
-    $DllPath = Join-Path $RepoRoot "build\$arch\$($spec.DllName)"
+    $arch = switch -Regex ($osArch) {
+        'ARM\s*64|Arm64' { 'arm64'; break }
+        '64|X64'         { 'x64'; break }
+        '32|X86'         { 'x86'; break }
+        default          { throw "Unsupported OS architecture: $osArch" }
+    }
+    $DllPath = Join-Path $RepoRoot "build\$arch\kbdisdv.dll"
 }
 if (-not (Test-Path $DllPath)) {
-    throw "DLL not found at $DllPath. Build with scripts\build.ps1 -Arch <arch> -Variant $variantName, or download a release asset."
+    throw "DLL not found at $DllPath. Build with scripts\build.ps1 -Arch <arch>, or download a release asset."
 }
 
-$LayoutFile  = $spec.DllName
-$LayoutText  = $spec.DisplayName
+$LayoutFile  = 'kbdisdv.dll'
+$LayoutText  = 'Icelandic Dvorak'
 $BaseLangId  = '040f'
 $LayoutsKey  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts'
 $System32    = Join-Path $env:SystemRoot 'System32'
@@ -106,13 +89,13 @@ function Get-AvailableLayoutIds {
     return @{ Klid = $klid; LayoutId = $layoutId }
 }
 
-# Find entry already pointing at this variant's DLL
+# Find entry already pointing at this DLL.
 $existing = Get-ChildItem $LayoutsKey | Where-Object {
     try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $LayoutFile } catch { $false }
 }
 
 if ($existing -and -not $Force) {
-    Write-Host "Variant '$variantName' already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
+    Write-Host "Icelandic Dvorak already registered as KLID $($existing.PSChildName). Use -Force to overwrite."
     $klid = $existing.PSChildName
     $layoutIdHex = (Get-ItemProperty $existing.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
     if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds).LayoutId }
@@ -126,7 +109,7 @@ if ($existing -and -not $Force) {
         $ids = Get-AvailableLayoutIds
         $klid = $ids.Klid
         $layoutIdHex = $ids.LayoutId
-        Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex (variant: $variantName)"
+        Write-Host "Allocated new KLID: $klid, Layout Id: $layoutIdHex"
     }
 }
 
@@ -217,5 +200,5 @@ try {
 }
 
 Write-Host ""
-Write-Host "==> Install complete: $LayoutText ($variantName)"
+Write-Host "==> Install complete: $LayoutText"
 Write-Host "    Win+Space should list it now."
