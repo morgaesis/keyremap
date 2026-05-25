@@ -1,0 +1,1310 @@
+﻿[
+    {
+        "klid":  "00000401",
+        "layoutText":  "Arabic (101)",
+        "layoutFile":  "KBDA1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000402",
+        "layoutText":  "Bulgarian (Typewriter)",
+        "layoutFile":  "KBDBU.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000404",
+        "layoutText":  "Chinese (Traditional) - US Keyboard",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000405",
+        "layoutText":  "Czech",
+        "layoutFile":  "KBDCZ.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000406",
+        "layoutText":  "Danish",
+        "layoutFile":  "KBDDA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000407",
+        "layoutText":  "German",
+        "layoutFile":  "KBDGR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000408",
+        "layoutText":  "Greek",
+        "layoutFile":  "KBDHE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000409",
+        "layoutText":  "US",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040a",
+        "layoutText":  "Spanish",
+        "layoutFile":  "KBDSP.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040b",
+        "layoutText":  "Finnish",
+        "layoutFile":  "KBDFI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040c",
+        "layoutText":  "French (Legacy, AZERTY)",
+        "layoutFile":  "KBDFR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040d",
+        "layoutText":  "Hebrew",
+        "layoutFile":  "KBDHEB.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040e",
+        "layoutText":  "Hungarian",
+        "layoutFile":  "KBDHU.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000040f",
+        "layoutText":  "Icelandic",
+        "layoutFile":  "KBDIC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000410",
+        "layoutText":  "Italian",
+        "layoutFile":  "KBDIT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000411",
+        "layoutText":  "Japanese",
+        "layoutFile":  "KBDJPN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000412",
+        "layoutText":  "Korean",
+        "layoutFile":  "KBDKOR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000413",
+        "layoutText":  "Dutch",
+        "layoutFile":  "KBDNE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000414",
+        "layoutText":  "Norwegian",
+        "layoutFile":  "KBDNO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000415",
+        "layoutText":  "Polish (Programmers)",
+        "layoutFile":  "KBDPL1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000416",
+        "layoutText":  "Portuguese (Brazilian ABNT)",
+        "layoutFile":  "KBDBR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000418",
+        "layoutText":  "Romanian (Legacy)",
+        "layoutFile":  "KBDRO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000419",
+        "layoutText":  "Russian",
+        "layoutFile":  "KBDRU.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041a",
+        "layoutText":  "Standard",
+        "layoutFile":  "KBDCR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041b",
+        "layoutText":  "Slovak",
+        "layoutFile":  "KBDSL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041c",
+        "layoutText":  "Albanian",
+        "layoutFile":  "KBDAL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041d",
+        "layoutText":  "Swedish",
+        "layoutFile":  "KBDSW.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041e",
+        "layoutText":  "Thai Kedmanee",
+        "layoutFile":  "KBDTH0.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000041f",
+        "layoutText":  "Turkish Q",
+        "layoutFile":  "KBDTUQ.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000420",
+        "layoutText":  "Urdu",
+        "layoutFile":  "KBDURDU.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000422",
+        "layoutText":  "Ukrainian",
+        "layoutFile":  "KBDUR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000423",
+        "layoutText":  "Belarusian",
+        "layoutFile":  "KBDBLR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000424",
+        "layoutText":  "Slovenian",
+        "layoutFile":  "KBDCR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000425",
+        "layoutText":  "Estonian",
+        "layoutFile":  "KBDEST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000426",
+        "layoutText":  "Latvian",
+        "layoutFile":  "KBDLV.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000427",
+        "layoutText":  "Lithuanian IBM",
+        "layoutFile":  "KBDLT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000428",
+        "layoutText":  "Tajik",
+        "layoutFile":  "KBDTAJIK.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000429",
+        "layoutText":  "Persian",
+        "layoutFile":  "KBDFA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000042a",
+        "layoutText":  "Vietnamese",
+        "layoutFile":  "KBDVNTC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000042b",
+        "layoutText":  "Armenian Eastern",
+        "layoutFile":  "kbdarme.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "0000042c",
+        "layoutText":  "Azeri Latin",
+        "layoutFile":  "KBDAZEL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000042e",
+        "layoutText":  "Sorbian Standard (Legacy)",
+        "layoutFile":  "KBDSORST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000042f",
+        "layoutText":  "Macedonian (North Macedonia)",
+        "layoutFile":  "KBDMAC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000432",
+        "layoutText":  "Setswana",
+        "layoutFile":  "KBDNSO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000437",
+        "layoutText":  "Georgian",
+        "layoutFile":  "kbdgeo.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00000438",
+        "layoutText":  "Faeroese",
+        "layoutFile":  "KBDFO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000439",
+        "layoutText":  "Devanagari - INSCRIPT",
+        "layoutFile":  "KBDINDEV.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000043a",
+        "layoutText":  "Maltese 47-Key",
+        "layoutFile":  "KBDMLT47.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000043b",
+        "layoutText":  "Norwegian with Sami",
+        "layoutFile":  "KBDNO1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000043f",
+        "layoutText":  "Kazakh",
+        "layoutFile":  "KBDKAZ.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000440",
+        "layoutText":  "Kyrgyz Cyrillic",
+        "layoutFile":  "KBDKYR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000442",
+        "layoutText":  "Turkmen",
+        "layoutFile":  "KBDTURME.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000444",
+        "layoutText":  "Tatar (Legacy)",
+        "layoutFile":  "KBDTAT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000445",
+        "layoutText":  "Bengali",
+        "layoutFile":  "KBDINBEN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000446",
+        "layoutText":  "Punjabi",
+        "layoutFile":  "KBDINPUN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000447",
+        "layoutText":  "Gujarati",
+        "layoutFile":  "KBDINGUJ.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000448",
+        "layoutText":  "Oriya",
+        "layoutFile":  "KBDINORI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000449",
+        "layoutText":  "Tamil",
+        "layoutFile":  "KBDINTAM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000044a",
+        "layoutText":  "Telugu",
+        "layoutFile":  "KBDINTEL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000044b",
+        "layoutText":  "Kannada",
+        "layoutFile":  "KBDINKAN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000044c",
+        "layoutText":  "Malayalam",
+        "layoutFile":  "KBDINMAL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000044d",
+        "layoutText":  "Assamese - INSCRIPT",
+        "layoutFile":  "KBDINASA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000044e",
+        "layoutText":  "Marathi",
+        "layoutFile":  "KBDINMAR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000450",
+        "layoutText":  "Mongolian Cyrillic",
+        "layoutFile":  "KBDMON.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000451",
+        "layoutText":  "Tibetan (PRC)",
+        "layoutFile":  "KBDTIPRC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000452",
+        "layoutText":  "United Kingdom Extended",
+        "layoutFile":  "KBDUKX.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000453",
+        "layoutText":  "Khmer",
+        "layoutFile":  "KBDKHMR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000454",
+        "layoutText":  "Lao",
+        "layoutFile":  "KBDLAO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000045a",
+        "layoutText":  "Syriac",
+        "layoutFile":  "KBDSYR1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000045b",
+        "layoutText":  "Sinhala",
+        "layoutFile":  "KBDSN1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000045c",
+        "layoutText":  "Cherokee Nation",
+        "layoutFile":  "KBDCHER.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000461",
+        "layoutText":  "Nepali",
+        "layoutFile":  "KBDNEPR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000463",
+        "layoutText":  "Pashto (Afghanistan)",
+        "layoutFile":  "KBDPASH.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000465",
+        "layoutText":  "Divehi Phonetic",
+        "layoutFile":  "KBDDIV1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000468",
+        "layoutText":  "Hausa",
+        "layoutFile":  "KBDHAU.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000046a",
+        "layoutText":  "Yoruba",
+        "layoutFile":  "KBDYBA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000046c",
+        "layoutText":  "Sesotho sa Leboa",
+        "layoutFile":  "KBDNSO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000046d",
+        "layoutText":  "Bashkir",
+        "layoutFile":  "KBDBASH.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000046e",
+        "layoutText":  "Luxembourgish",
+        "layoutFile":  "KBDSF.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000046f",
+        "layoutText":  "Greenlandic",
+        "layoutFile":  "KBDGRLND.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000470",
+        "layoutText":  "Igbo",
+        "layoutFile":  "KBDIBO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000474",
+        "layoutText":  "Guarani",
+        "layoutFile":  "KBDGN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000475",
+        "layoutText":  "Hawaiian",
+        "layoutFile":  "KBDHAW.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000480",
+        "layoutText":  "Uyghur (Legacy)",
+        "layoutFile":  "KBDUGHR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000481",
+        "layoutText":  "Maori",
+        "layoutFile":  "KBDMAORI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000485",
+        "layoutText":  "Sakha",
+        "layoutFile":  "KBDYAK.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000488",
+        "layoutText":  "Wolof",
+        "layoutFile":  "KBDWOL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000492",
+        "layoutText":  "Central Kurdish",
+        "layoutFile":  "KBDKURD.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000804",
+        "layoutText":  "Chinese (Simplified) - US Keyboard",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000807",
+        "layoutText":  "Swiss German",
+        "layoutFile":  "KBDSG.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000809",
+        "layoutText":  "United Kingdom",
+        "layoutFile":  "KBDUK.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000080a",
+        "layoutText":  "Latin American",
+        "layoutFile":  "KBDLA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000080c",
+        "layoutText":  "Belgian French",
+        "layoutFile":  "KBDBE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000813",
+        "layoutText":  "Belgian (Period)",
+        "layoutFile":  "KBDBE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000816",
+        "layoutText":  "Portuguese",
+        "layoutFile":  "KBDPO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000081a",
+        "layoutText":  "Serbian (Latin)",
+        "layoutFile":  "KBDYCL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000082c",
+        "layoutText":  "Azeri Cyrillic",
+        "layoutFile":  "KBDAZE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000083b",
+        "layoutText":  "Swedish with Sami",
+        "layoutFile":  "KBDFI1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000843",
+        "layoutText":  "Uzbek Cyrillic",
+        "layoutFile":  "KBDUZB.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000850",
+        "layoutText":  "Mongolian (Mongolian Script)",
+        "layoutFile":  "KBDMONMO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000085d",
+        "layoutText":  "Inuktitut - Latin",
+        "layoutFile":  "KBDIULAT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000085f",
+        "layoutText":  "Central Atlas Tamazight",
+        "layoutFile":  "KBDTZM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000c04",
+        "layoutText":  "Chinese (Traditional, Hong Kong S.A.R.) - US Keyboard",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000c0c",
+        "layoutText":  "Canadian French (Legacy)",
+        "layoutFile":  "KBDFC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000c1a",
+        "layoutText":  "Serbian (Cyrillic)",
+        "layoutFile":  "KBDYCC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00000C51",
+        "layoutText":  "Dzongkha",
+        "layoutFile":  "KBDDZO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00001004",
+        "layoutText":  "Chinese (Simplified, Singapore) - US Keyboard",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00001009",
+        "layoutText":  "Canadian French",
+        "layoutFile":  "KBDCA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000100c",
+        "layoutText":  "Swiss French",
+        "layoutFile":  "KBDSF.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000105f",
+        "layoutText":  "Tifinagh (Basic)",
+        "layoutFile":  "KBDTIFI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00001404",
+        "layoutText":  "Chinese (Traditional, Macao S.A.R.) - US Keyboard",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00001409",
+        "layoutText":  "NZ Aotearoa",
+        "layoutFile":  "KBDMAORI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00001809",
+        "layoutText":  "Irish",
+        "layoutFile":  "KBDIR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0000201a",
+        "layoutText":  "Bosnian (Cyrillic)",
+        "layoutFile":  "KBDBHC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00004009",
+        "layoutText":  "India",
+        "layoutFile":  "KBDINEN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010401",
+        "layoutText":  "Arabic (102)",
+        "layoutFile":  "KBDA2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010402",
+        "layoutText":  "Bulgarian (Latin)",
+        "layoutFile":  "KBDUS.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010405",
+        "layoutText":  "Czech (QWERTY)",
+        "layoutFile":  "KBDCZ1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010407",
+        "layoutText":  "German (IBM)",
+        "layoutFile":  "KBDGR1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010408",
+        "layoutText":  "Greek (220)",
+        "layoutFile":  "KBDHE220.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010409",
+        "layoutText":  "United States-Dvorak",
+        "layoutFile":  "KBDDV.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001040a",
+        "layoutText":  "Spanish Variation",
+        "layoutFile":  "KBDES.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001040c",
+        "layoutText":  "French (Standard, AZERTY)",
+        "layoutFile":  "KBDFRNA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001040e",
+        "layoutText":  "Hungarian 101-key",
+        "layoutFile":  "KBDHU1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010410",
+        "layoutText":  "Italian (142)",
+        "layoutFile":  "KBDIT142.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010415",
+        "layoutText":  "Polish (214)",
+        "layoutFile":  "KBDPL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010416",
+        "layoutText":  "Portuguese (Brazilian ABNT2)",
+        "layoutFile":  "KBDBR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010418",
+        "layoutText":  "Romanian (Standard)",
+        "layoutFile":  "KBDROST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010419",
+        "layoutText":  "Russian (Typewriter)",
+        "layoutFile":  "KBDRU1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001041b",
+        "layoutText":  "Slovak (QWERTY)",
+        "layoutFile":  "KBDSL1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001041e",
+        "layoutText":  "Thai Pattachote",
+        "layoutFile":  "KBDTH1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001041f",
+        "layoutText":  "Turkish F",
+        "layoutFile":  "KBDTUF.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010426",
+        "layoutText":  "Latvian (QWERTY)",
+        "layoutFile":  "KBDLV1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010427",
+        "layoutText":  "Lithuanian",
+        "layoutFile":  "KBDLT1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001042b",
+        "layoutText":  "Armenian Western",
+        "layoutFile":  "kbdarmw.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "0001042c",
+        "layoutText":  "Azerbaijani (Standard)",
+        "layoutFile":  "KBDAZST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001042e",
+        "layoutText":  "Sorbian Extended",
+        "layoutFile":  "KBDSOREX.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001042f",
+        "layoutText":  "Macedonian (North Macedonia) - Standard",
+        "layoutFile":  "KBDMACST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010437",
+        "layoutText":  "Georgian (QWERTY)",
+        "layoutFile":  "kbdgeoqw.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00010439",
+        "layoutText":  "Hindi Traditional",
+        "layoutFile":  "KBDINHIN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001043a",
+        "layoutText":  "Maltese 48-Key",
+        "layoutFile":  "KBDMLT48.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001043b",
+        "layoutText":  "Sami Extended Norway",
+        "layoutFile":  "KBDSMSNO.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010444",
+        "layoutText":  "Tatar",
+        "layoutFile":  "KBDTT102.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010445",
+        "layoutText":  "Bengali - INSCRIPT (Legacy)",
+        "layoutFile":  "KBDINBE1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010451",
+        "layoutText":  "Tibetan (PRC) - Updated",
+        "layoutFile":  "KBDTIPRD.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010453",
+        "layoutText":  "Khmer (NIDA)",
+        "layoutFile":  "KBDKNI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001045a",
+        "layoutText":  "Syriac Phonetic",
+        "layoutFile":  "KBDSYR2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001045b",
+        "layoutText":  "Sinhala - Wij 9",
+        "layoutFile":  "KBDSW09.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001045c",
+        "layoutText":  "Cherokee Nation Phonetic",
+        "layoutFile":  "KBDCHERP.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001045d",
+        "layoutText":  "Inuktitut - Naqittaut",
+        "layoutFile":  "KBDINUK2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010465",
+        "layoutText":  "Divehi Typewriter",
+        "layoutFile":  "KBDDIV2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010480",
+        "layoutText":  "Uyghur",
+        "layoutFile":  "KBDUGHR1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001080c",
+        "layoutText":  "Belgian (Comma)",
+        "layoutFile":  "KBDBENE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001083b",
+        "layoutText":  "Finnish with Sami",
+        "layoutFile":  "KBDFI1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010850",
+        "layoutText":  "Traditional Mongolian (Standard)",
+        "layoutFile":  "KBDMONST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00010c00",
+        "layoutText":  "Myanmar (Phonetic order)",
+        "layoutFile":  "KBDMYAN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00011009",
+        "layoutText":  "Canadian Multilingual Standard",
+        "layoutFile":  "KBDCAN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0001105f",
+        "layoutText":  "Tifinagh (Full)",
+        "layoutFile":  "KBDTIFI2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00011809",
+        "layoutText":  "Gaelic",
+        "layoutFile":  "KBDGAE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020401",
+        "layoutText":  "Arabic (102) AZERTY",
+        "layoutFile":  "KBDA3.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020402",
+        "layoutText":  "Bulgarian (Phonetic)",
+        "layoutFile":  "KBDBGPH.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020405",
+        "layoutText":  "Czech Programmers",
+        "layoutFile":  "KBDCZ2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020407",
+        "layoutText":  "German Extended (E1)",
+        "layoutFile":  "KBDGRE1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020408",
+        "layoutText":  "Greek (319)",
+        "layoutFile":  "KBDHE319.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020409",
+        "layoutText":  "United States-International",
+        "layoutFile":  "KBDUSX.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002040c",
+        "layoutText":  "French (Standard, BÉPO)",
+        "layoutFile":  "KBDFRNB.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002040d",
+        "layoutText":  "Hebrew (Standard)",
+        "layoutFile":  "kbdhebl3.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00020418",
+        "layoutText":  "Romanian (Programmers)",
+        "layoutFile":  "KBDROPR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020419",
+        "layoutText":  "Russian - Mnemonic",
+        "layoutFile":  "KBDRUM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002041e",
+        "layoutText":  "Thai Kedmanee (non-ShiftLock)",
+        "layoutFile":  "KBDTH2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020422",
+        "layoutText":  "Ukrainian (Enhanced)",
+        "layoutFile":  "KBDUR1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020426",
+        "layoutText":  "Latvian (Standard)",
+        "layoutFile":  "KBDLVST.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020427",
+        "layoutText":  "Lithuanian Standard",
+        "layoutFile":  "KBDLT2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002042b",
+        "layoutText":  "Armenian Phonetic",
+        "layoutFile":  "kbdarmph.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "0002042e",
+        "layoutText":  "Sorbian Standard",
+        "layoutFile":  "KBDSORS1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020437",
+        "layoutText":  "Georgian (Ergonomic)",
+        "layoutFile":  "kbdgeoer.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00020445",
+        "layoutText":  "Bengali - INSCRIPT",
+        "layoutFile":  "KBDINBE2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020449",
+        "layoutText":  "Tamil 99",
+        "layoutFile":  "KBDTAM99.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002045d",
+        "layoutText":  "Inuktitut - Nattilik",
+        "layoutFile":  "KBDINUK3.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0002083b",
+        "layoutText":  "Sami Extended Finland-Sweden",
+        "layoutFile":  "KBDSMSFI.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020850",
+        "layoutText":  "Traditional Mongolian (MNS)",
+        "layoutFile":  "KBDMONS2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00020c00",
+        "layoutText":  "New Tai Lue",
+        "layoutFile":  "KBDNTL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030401",
+        "layoutText":  "Arabic (101, Legacy)",
+        "layoutFile":  "KBDA4.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030402",
+        "layoutText":  "Bulgarian",
+        "layoutFile":  "KBDBULG.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030407",
+        "layoutText":  "German Extended (E2)",
+        "layoutFile":  "KBDGRE2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030408",
+        "layoutText":  "Greek (220) Latin",
+        "layoutFile":  "KBDHELA2.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030409",
+        "layoutText":  "United States-Dvorak for left hand",
+        "layoutFile":  "KBDUSL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0003040d",
+        "layoutText":  "Hebrew (Standard, 2018)",
+        "layoutFile":  "kbdhebsi.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "0003041e",
+        "layoutText":  "Thai Pattachote (non-ShiftLock)",
+        "layoutFile":  "KBDTH3.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "0003042b",
+        "layoutText":  "Armenian Typewriter",
+        "layoutFile":  "kbdarmty.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00030437",
+        "layoutText":  "Georgian Ministry of Education and Science Schools",
+        "layoutFile":  "kbdgeome.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00030449",
+        "layoutText":  "Tamil Anjal",
+        "layoutFile":  "KBDINEN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00030c00",
+        "layoutText":  "Tai Le",
+        "layoutFile":  "KBDTAILE.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00040402",
+        "layoutText":  "Bulgarian (Phonetic Traditional)",
+        "layoutFile":  "KBDBGPH1.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00040408",
+        "layoutText":  "Greek (319) Latin",
+        "layoutFile":  "KBDHELA3.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00040409",
+        "layoutText":  "United States-Dvorak for right hand",
+        "layoutFile":  "KBDUSR.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00040437",
+        "layoutText":  "Georgian (Old Alphabets)",
+        "layoutFile":  "kbdgeooa.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00040c00",
+        "layoutText":  "Ogham",
+        "layoutFile":  "KBDOGHAM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00050408",
+        "layoutText":  "Greek Latin",
+        "layoutFile":  "KBDGKL.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00050409",
+        "layoutText":  "US English Table for IBM Arabic 238_L",
+        "layoutFile":  "KBDUSA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00050429",
+        "layoutText":  "Persian (Standard)",
+        "layoutFile":  "kbdfar.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00060408",
+        "layoutText":  "Greek Polytonic",
+        "layoutFile":  "KBDHEPT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00060409",
+        "layoutText":  "Colemak",
+        "layoutFile":  "KBDCMK.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00070c00",
+        "layoutText":  "Lisu (Basic)",
+        "layoutFile":  "kbdlisub.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00080c00",
+        "layoutText":  "Lisu (Standard)",
+        "layoutFile":  "kbdlisus.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "00090c00",
+        "layoutText":  "N’Ko",
+        "layoutFile":  "kbdnko.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "000a0c00",
+        "layoutText":  "Phags-pa",
+        "layoutFile":  "kbdphags.dll",
+        "custom":  false
+    },
+    {
+        "klid":  "000b0c00",
+        "layoutText":  "Buginese",
+        "layoutFile":  "KBDBUG.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "000c0c00",
+        "layoutText":  "Gothic",
+        "layoutFile":  "KBDGTHC.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "000d0c00",
+        "layoutText":  "Ol Chiki",
+        "layoutFile":  "KBDOLCH.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "000e0c00",
+        "layoutText":  "Osmanya",
+        "layoutFile":  "KBDOSM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "000f0c00",
+        "layoutText":  "Old Italic",
+        "layoutFile":  "KBDOLDIT.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00100c00",
+        "layoutText":  "Sora",
+        "layoutFile":  "KBDSORA.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00110c00",
+        "layoutText":  "Javanese",
+        "layoutFile":  "KBDJAV.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00120c00",
+        "layoutText":  "Futhark",
+        "layoutFile":  "KBDFTHRK.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00130c00",
+        "layoutText":  "Myanmar (Visual Order)",
+        "layoutFile":  "KBDMYAN.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00140c00",
+        "layoutText":  "ADLaM",
+        "layoutFile":  "KBDADLM.DLL",
+        "custom":  false
+    },
+    {
+        "klid":  "00150c00",
+        "layoutText":  "Osage",
+        "layoutFile":  "KBDOSA.DLL",
+        "custom":  false
+    }
+]
