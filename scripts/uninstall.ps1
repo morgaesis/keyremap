@@ -72,6 +72,41 @@ if (Test-Path $preload -and $removedKlids.Count -gt 0) {
     }
 }
 
+# Remove modern language profile tips and substitute entries for removed layouts.
+if ($removedKlids.Count -gt 0) {
+    $removedLookup = @{}
+    foreach ($klid in $removedKlids) { $removedLookup[$klid.ToUpperInvariant()] = $true }
+
+    $changed = $false
+    $languageList = Get-WinUserLanguageList
+    foreach ($lang in $languageList) {
+        $removeTips = @()
+        foreach ($tip in @($lang.InputMethodTips)) {
+            $parts = ([string]$tip).Split(':')
+            if ($parts.Count -eq 2 -and $removedLookup.ContainsKey($parts[1].ToUpperInvariant())) {
+                $removeTips += [string]$tip
+            }
+        }
+        foreach ($tip in $removeTips) {
+            [void]$lang.InputMethodTips.Remove($tip)
+            Write-Host "Removed language profile input method $tip"
+            $changed = $true
+        }
+    }
+    if ($changed) { Set-WinUserLanguageList $languageList -Force }
+
+    $substitutes = 'HKCU:\Keyboard Layout\Substitutes'
+    if (Test-Path $substitutes) {
+        foreach ($prop in (Get-Item $substitutes).Property) {
+            $value = [string](Get-ItemProperty $substitutes -Name $prop).$prop
+            if ($removedLookup.ContainsKey($value.ToUpperInvariant())) {
+                Remove-ItemProperty -Path $substitutes -Name $prop
+                Write-Host "Removed keyboard substitute $prop -> $value"
+            }
+        }
+    }
+}
+
 # Delete DLLs
 Add-Type -TypeDefinition @'
 using System;

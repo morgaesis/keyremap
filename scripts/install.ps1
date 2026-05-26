@@ -136,6 +136,102 @@ function Remove-PreloadKlids {
     }
 }
 
+function Remove-StaleUserLanguageTips {
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [string[]]$StaleKlids = @()
+    )
+
+    $base = $BaseLangId.ToUpperInvariant()
+    $stale = @{}
+    foreach ($klid in $StaleKlids) {
+        if ($klid) { $stale[$klid.ToUpperInvariant()] = $true }
+    }
+
+    $changed = $false
+    $list = Get-WinUserLanguageList
+    foreach ($lang in $list) {
+        $remove = @()
+        foreach ($tip in @($lang.InputMethodTips)) {
+            $parts = ([string]$tip).Split(':')
+            if ($parts.Count -ne 2) { continue }
+            $keyboard = $parts[1].ToUpperInvariant()
+            $keyPath = Join-Path $LayoutsKey $keyboard.ToLowerInvariant()
+            $isKnownStale = $stale.ContainsKey($keyboard)
+            $isDanglingGenerated = $keyboard -match "^[A-D][0-9A-F]{3}$base$" -and -not (Test-Path $keyPath)
+            if ($isKnownStale -or $isDanglingGenerated) { $remove += [string]$tip }
+        }
+        foreach ($tip in $remove) {
+            [void]$lang.InputMethodTips.Remove($tip)
+            Write-Host "Removed stale language profile input method $tip from $($lang.LanguageTag)"
+            $changed = $true
+        }
+    }
+
+    if ($changed) { Set-WinUserLanguageList $list -Force }
+}
+
+function Add-UserLanguageTip {
+    param(
+        [Parameter(Mandatory)][string]$LanguageTag,
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$Klid
+    )
+
+    $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
+    $list = Get-WinUserLanguageList
+    $lang = $null
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        if ($list[$i].LanguageTag -eq $LanguageTag) { $lang = $list[$i]; break }
+    }
+    if (-not $lang) {
+        $newList = New-WinUserLanguageList $LanguageTag
+        $lang = $newList[0]
+        $lang.InputMethodTips.Clear()
+        $list.Add($lang)
+        Write-Host "Added user language profile: $LanguageTag"
+    }
+
+    $remove = @($lang.InputMethodTips | Where-Object { $_ -ne $targetTip })
+    foreach ($tip in $remove) {
+        [void]$lang.InputMethodTips.Remove($tip)
+        Write-Host "Removed unmanaged input method $tip from $LanguageTag"
+    }
+
+    if (-not ($lang.InputMethodTips -contains $targetTip)) {
+        [void]$lang.InputMethodTips.Add($targetTip)
+        Write-Host "Added user language input method: $targetTip"
+    } else {
+        Write-Host "User language input method already present: $targetTip"
+    }
+    Set-WinUserLanguageList $list -Force
+}
+
+function Remove-ProjectSubstitutes {
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [string[]]$AllowedKlids = @()
+    )
+
+    $substitutes = 'HKCU:\Keyboard Layout\Substitutes'
+    if (-not (Test-Path $substitutes)) { return }
+    $allowed = @{}
+    foreach ($klid in $AllowedKlids) {
+        if ($klid) { $allowed[$klid.ToLowerInvariant()] = $true }
+    }
+
+    foreach ($prop in (Get-Item $substitutes).Property) {
+        $value = (Get-ItemProperty $substitutes -Name $prop).$prop
+        $propString = [string]$prop
+        $valueString = [string]$value
+        $isGenerated = $valueString -match "^[a-dA-D][0-9a-fA-F]{3}$BaseLangId$"
+        if ($isGenerated -and -not $allowed.ContainsKey($valueString.ToLowerInvariant())) {
+            Remove-ItemProperty -Path $substitutes -Name $propString
+            Write-Host "Removed stale keyboard substitute $propString -> $valueString"
+        }
+    }
+}
+
 # --- Pick unused KLID + Layout Id ---------------------------------------------
 function Get-AvailableLayoutIds {
     param(
@@ -186,6 +282,8 @@ function Install-OneLayout {
     $LayoutFile = [string]$Layout.dllName
     $LayoutText = [string]$Layout.displayName
     $BaseLangId = [string]$Layout.baseLangId
+    $LanguageTag = [string]$Layout.languageTag
+    if (-not $LanguageTag) { $LanguageTag = switch ($BaseLangId.ToLowerInvariant()) { '040f' { 'is' } default { $null } } }
     if (-not $LayoutFile -or -not $LayoutText -or -not $BaseLangId) {
         throw "Manifest entry '$($Layout.id)' is missing dllName/displayName/baseLangId"
     }
@@ -209,6 +307,7 @@ function Install-OneLayout {
         try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
     } | Select-Object -First 1)
     $matchingPreferredPayload = @($matchingPayload | Where-Object { $_.PSChildName -eq $preferredKlid } | Select-Object -First 1)
+    $staleKlids = @($existing | ForEach-Object { $_.PSChildName })
 
     if ($existing -and -not $Force) {
         $entry = if ($matchingPayload) { $matchingPayload[0] } else { $existing[0] }
@@ -255,19 +354,13 @@ function Install-OneLayout {
     Write-Host "Registered at $keyPath"
 
     if ($AddToCurrentUser) {
-        $preload = 'HKCU:\Keyboard Layout\Preload'
-        if (-not (Test-Path $preload)) { New-Item -Path $preload -Force | Out-Null }
-        $alreadyPreloaded = (Get-Item $preload).Property | ForEach-Object {
-            (Get-ItemProperty $preload -Name $_).$_
-        } | Where-Object { $_ -eq $klid }
-        if (-not $alreadyPreloaded) {
-            $existingNums = (Get-Item $preload).Property | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
-            $maxNum = if ($existingNums) { ($existingNums | Measure-Object -Maximum).Maximum } else { 0 }
-            $slot = ($maxNum + 1).ToString()
-            Set-ItemProperty -Path $preload -Name $slot -Value $klid -Type String
-            Write-Host "Added to current user preload (slot $slot)"
+        Remove-PreloadKlids -Klids $staleKlids
+        Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
+        Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid)
+        if ($LanguageTag) {
+            Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
         } else {
-            Write-Host "Already in current user preload list"
+            Write-Warning "No languageTag is configured for '$($Layout.id)'; not adding a modern user language profile."
         }
     }
 
