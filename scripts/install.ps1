@@ -170,8 +170,9 @@ function Remove-StaleUserLanguageTips {
             if ($parts.Count -ne 2) { continue }
             $keyboard = $parts[1].ToUpperInvariant()
             $keyPath = Join-Path $LayoutsKey $keyboard.ToLowerInvariant()
+            $isGenerated = $keyboard -match "^[A-D][0-9A-F]{3}$base$"
             $isKnownStale = $stale.ContainsKey($keyboard)
-            $isDanglingGenerated = $keyboard -match "^[A-D][0-9A-F]{3}$base$" -and -not (Test-Path $keyPath)
+            $isDanglingGenerated = $isGenerated -and -not (Test-Path $keyPath)
             if ($isKnownStale -or $isDanglingGenerated) { $remove += [string]$tip }
         }
         foreach ($tip in $remove) {
@@ -256,7 +257,8 @@ function Add-UserLanguageTip {
 function Remove-ProjectSubstitutes {
     param(
         [Parameter(Mandatory)][string]$BaseLangId,
-        [string[]]$AllowedKlids = @()
+        [string[]]$AllowedKlids = @(),
+        [string[]]$StaleKlids = @()
     )
 
     $substitutes = 'HKCU:\Keyboard Layout\Substitutes'
@@ -265,13 +267,22 @@ function Remove-ProjectSubstitutes {
     foreach ($klid in $AllowedKlids) {
         if ($klid) { $allowed[$klid.ToLowerInvariant()] = $true }
     }
+    $stale = @{}
+    foreach ($klid in $StaleKlids) {
+        if ($klid) { $stale[$klid.ToLowerInvariant()] = $true }
+    }
 
     foreach ($prop in (Get-Item $substitutes).Property) {
         $value = (Get-ItemProperty $substitutes -Name $prop).$prop
         $propString = [string]$prop
         $valueString = [string]$value
-        $isGenerated = $valueString -match "^[a-dA-D][0-9a-fA-F]{3}$BaseLangId$"
-        if ($isGenerated -and -not $allowed.ContainsKey($valueString.ToLowerInvariant())) {
+        $propLower = $propString.ToLowerInvariant()
+        $valueLower = $valueString.ToLowerInvariant()
+        $valueIsStale = $stale.ContainsKey($valueLower)
+        $propIsStale = $stale.ContainsKey($propLower)
+        $isWrongBaseRedirect = $propIsStale -and $valueString -eq "0000$BaseLangId"
+        $isWrongGeneratedRedirect = $propIsStale -and $allowed.ContainsKey($valueLower)
+        if ($valueIsStale -or $isWrongBaseRedirect -or $isWrongGeneratedRedirect) {
             Remove-ItemProperty -Path $substitutes -Name $propString
             Write-Host "Removed stale keyboard substitute $propString -> $valueString"
         }
@@ -394,7 +405,7 @@ function Install-OneLayout {
     }
     Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $payloadFile -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
-    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$payloadFile,-1000" -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value $LayoutText -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Id' -Value $layoutIdHex -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
     Write-Host "Registered at $keyPath"
@@ -402,9 +413,10 @@ function Install-OneLayout {
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
-        Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid)
+        Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
+            Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
         }
@@ -431,6 +443,7 @@ public static class KbdActivate {
     public const uint KLF_REORDER       = 0x00000008;
     public const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
     public const uint WM_SETTINGCHANGE          = 0x001A;
+    public const uint WM_INPUTLANGCHANGE        = 0x0051;
     public static readonly IntPtr HWND_BROADCAST = (IntPtr)0xFFFF;
     public const uint SMTO_ABORTIFHUNG = 0x0002;
 }
@@ -466,6 +479,12 @@ foreach ($klid in $installedKlids) {
             [KbdActivate]::HWND_BROADCAST,
             [KbdActivate]::WM_SETTINGCHANGE,
             [UIntPtr]::Zero, [IntPtr]::Zero,
+            [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
+            [ref]$result)
+        [void][KbdActivate]::SendMessageTimeout(
+            [KbdActivate]::HWND_BROADCAST,
+            [KbdActivate]::WM_INPUTLANGCHANGE,
+            [UIntPtr]::Zero, $hkl,
             [KbdActivate]::SMTO_ABORTIFHUNG, 2000,
             [ref]$result)
     } catch {
