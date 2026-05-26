@@ -8,7 +8,6 @@
     "windowsAlreadyExists": false,
     "packaged": true,
     "baseLangId": "040f",
-    "languageTag": "is",
     "dllName": "kbdisdv.dll",
     "description": "Linux xkeyboard-config is(dvorak)"
   }

@@ -136,6 +136,19 @@ function Remove-PreloadKlids {
     }
 }
 
+function Resolve-LanguageTag {
+    param([Parameter(Mandatory)][string]$BaseLangId)
+
+    $lcid = [Convert]::ToInt32($BaseLangId, 16)
+    try {
+        $culture = [System.Globalization.CultureInfo]::GetCultureInfo($lcid)
+        if ($culture.Name) { return $culture.Name }
+    } catch {
+        Write-Warning "Could not derive a Windows language tag from LANGID ${BaseLangId}: $_"
+    }
+    return $null
+}
+
 function Remove-StaleUserLanguageTips {
     param(
         [Parameter(Mandatory)][string]$BaseLangId,
@@ -180,9 +193,38 @@ function Add-UserLanguageTip {
 
     $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
     $list = Get-WinUserLanguageList
+    $changed = $false
+    $emptyProfiles = @()
+    foreach ($profile in $list) {
+        $remove = @()
+        foreach ($tip in @($profile.InputMethodTips)) {
+            $parts = ([string]$tip).Split(':')
+            if ($parts.Count -eq 2 -and $parts[1].Equals($Klid, [System.StringComparison]::OrdinalIgnoreCase) -and $profile.LanguageTag -ne $LanguageTag) {
+                $remove += [string]$tip
+            }
+        }
+        foreach ($tip in $remove) {
+            [void]$profile.InputMethodTips.Remove($tip)
+            Write-Host "Removed relocated input method $tip from $($profile.LanguageTag)"
+            $changed = $true
+        }
+        if ($remove.Count -gt 0 -and $profile.InputMethodTips.Count -eq 0) { $emptyProfiles += $profile }
+    }
+    foreach ($profile in $emptyProfiles) {
+        [void]$list.Remove($profile)
+        Write-Host "Removed empty language profile: $($profile.LanguageTag)"
+    }
+
     $lang = $null
     for ($i = 0; $i -lt $list.Count; $i++) {
         if ($list[$i].LanguageTag -eq $LanguageTag) { $lang = $list[$i]; break }
+    }
+    if (-not $lang) {
+        $prefix = $BaseLangId.ToUpperInvariant() + ':'
+        for ($i = 0; $i -lt $list.Count; $i++) {
+            $hasSameBase = @($list[$i].InputMethodTips | Where-Object { ([string]$_).ToUpperInvariant().StartsWith($prefix) }).Count -gt 0
+            if ($hasSameBase) { $lang = $list[$i]; break }
+        }
     }
     if (-not $lang) {
         $newList = New-WinUserLanguageList $LanguageTag
@@ -190,21 +232,25 @@ function Add-UserLanguageTip {
         $lang.InputMethodTips.Clear()
         $list.Add($lang)
         Write-Host "Added user language profile: $LanguageTag"
-    }
-
-    $remove = @($lang.InputMethodTips | Where-Object { $_ -ne $targetTip })
-    foreach ($tip in $remove) {
-        [void]$lang.InputMethodTips.Remove($tip)
-        Write-Host "Removed unmanaged input method $tip from $LanguageTag"
+        $changed = $true
     }
 
     if (-not ($lang.InputMethodTips -contains $targetTip)) {
         [void]$lang.InputMethodTips.Add($targetTip)
         Write-Host "Added user language input method: $targetTip"
+        $changed = $true
     } else {
         Write-Host "User language input method already present: $targetTip"
     }
-    Set-WinUserLanguageList $list -Force
+    $baseTip = ('{0}:0000{0}' -f $BaseLangId.ToUpperInvariant())
+    if ($lang.InputMethodTips.Count -eq 2 -and
+        ($lang.InputMethodTips -contains $targetTip) -and
+        ($lang.InputMethodTips -contains $baseTip)) {
+        [void]$lang.InputMethodTips.Remove($baseTip)
+        Write-Host "Removed auto-added base input method: $baseTip"
+        $changed = $true
+    }
+    if ($changed) { Set-WinUserLanguageList $list -Force }
 }
 
 function Remove-ProjectSubstitutes {
@@ -283,10 +329,10 @@ function Install-OneLayout {
     $LayoutText = [string]$Layout.displayName
     $BaseLangId = [string]$Layout.baseLangId
     $LanguageTag = [string]$Layout.languageTag
-    if (-not $LanguageTag) { $LanguageTag = switch ($BaseLangId.ToLowerInvariant()) { '040f' { 'is' } default { $null } } }
     if (-not $LayoutFile -or -not $LayoutText -or -not $BaseLangId) {
         throw "Manifest entry '$($Layout.id)' is missing dllName/displayName/baseLangId"
     }
+    if (-not $LanguageTag) { $LanguageTag = Resolve-LanguageTag -BaseLangId $BaseLangId }
 
     $sourceDll = if ($DllPath -and $LayoutId.Count -eq 1) {
         $DllPath
@@ -360,7 +406,7 @@ function Install-OneLayout {
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
         } else {
-            Write-Warning "No languageTag is configured for '$($Layout.id)'; not adding a modern user language profile."
+            Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
         }
     }
 

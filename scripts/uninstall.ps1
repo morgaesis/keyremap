@@ -28,8 +28,9 @@ if (Test-Path $ManifestPath) {
     $targetDlls = @($manifest | ForEach-Object { [string]$_.dllName } | Where-Object { $_ } | Select-Object -Unique)
     $targetTexts = @($manifest | ForEach-Object { [string]$_.displayName } | Where-Object { $_ } | Select-Object -Unique)
 } else {
-    $targetDlls = @('kbdisdv.dll')
-    $targetTexts = @('Icelandic Dvorak')
+    $manifest = @()
+    $targetDlls = @()
+    $targetTexts = @()
 }
 
 Write-Host "Uninstalling keyremap layouts"
@@ -40,7 +41,8 @@ $entries = Get-ChildItem $LayoutsKey | Where-Object {
         $lf = $props.'Layout File'
         $sameProduct = $props.'Layout Product Code' -eq $ProductCode -and $targetTexts -contains $props.'Layout Text'
         $sameFile = $targetDlls -contains $lf
-        $sameProduct -or $sameFile
+        $sameProductFallback = $props.'Layout Product Code' -eq $ProductCode -and $targetTexts.Count -eq 0
+        $sameProduct -or $sameFile -or $sameProductFallback
     } catch { $false }
 }
 

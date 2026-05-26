@@ -22,6 +22,7 @@ sequences are considered, which is the KLC dead-key model.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -438,6 +439,8 @@ CAP_LETTER_VKS = {
 
 # -------------- layout metadata --------------
 
+# Built-in fallback metadata for manual/prototype runs. Production generation
+# should pass reviewed Windows profile metadata rather than relying on this map.
 # layout_id -> (kbd name, locale id (hex), locale name, description, langname)
 LAYOUT_META = {
     "is": ("kbdis",   "0000040f", "is-IS", "Icelandic",         "íslenska (Ísland)"),
@@ -450,6 +453,31 @@ LAYOUT_META = {
     "es": ("kbdsp",   "0000040a", "es-ES", "Spanish",            "español (España)"),
     "fr": ("kbdfr",   "0000040c", "fr-FR", "French",             "français (France)"),
 }
+
+
+def load_layout_meta(path: Optional[Path], layout: str, variant_name: str) -> Optional[Tuple[str, str, str, str, str]]:
+    if not path:
+        return None
+    items = json.loads(path.read_text(encoding="utf-8"))
+    wanted_id = f"{layout}-{variant_name}" if variant_name else layout
+    wanted_id = re.sub(r"[^a-z0-9]+", "-", wanted_id.lower()).strip("-")
+    for item in items:
+        item_layout = str(item.get("xkbLayout", ""))
+        item_variant = str(item.get("xkbVariant", ""))
+        item_id = str(item.get("id", ""))
+        if item_id != wanted_id and (item_layout, item_variant) != (layout, variant_name):
+            continue
+        base_langid = str(item.get("baseLangId", "")).lower()
+        if not re.fullmatch(r"[0-9a-f]{4}", base_langid):
+            raise ValueError(f"manifest entry {item_id or wanted_id!r} has invalid baseLangId")
+        fallback = LAYOUT_META.get(layout)
+        locale_name = str(item.get("languageTag", "") or item.get("localeName", "") or (fallback[2] if fallback else layout))
+        desc = str(item.get("windowsFamily", "") or item.get("displayName", "") or layout)
+        langname = str(item.get("languageName", "") or locale_name)
+        dll_name = str(item.get("dllName", "") or f"kbd{layout}.dll")
+        kbd_name = Path(dll_name).stem[:8]
+        return (kbd_name, f"0000{base_langid}", locale_name, desc, langname)
+    return None
 
 
 # -------------- KLC emission --------------
@@ -478,8 +506,9 @@ def emit_klc(
     compose: Dict[int, Dict[int, int]],
     out: List[str],
     cps: Optional[Dict[int, int]] = None,
+    meta_override: Optional[Tuple[str, str, str, str, str]] = None,
 ) -> None:
-    meta = LAYOUT_META.get(layout, (f"kbd{layout}", "00000000", f"{layout}", layout, layout))
+    meta = meta_override or LAYOUT_META.get(layout, (f"kbd{layout}", "00000000", f"{layout}", layout, layout))
     kbd_name, locale_id, locale_name, desc, langname = meta
     kbd_name = f"{kbd_name}{variant_name[:2]}"[:8] if variant_name != "basic" else kbd_name
     desc_full = var.name_group1 or f"{desc} ({variant_name})"
@@ -663,6 +692,8 @@ def main() -> int:
                    help="Path to X11 Compose file (default: /usr/share/X11/locale/en_US.UTF-8/Compose)")
     p.add_argument("--keysymdef", default=None,
                    help="Path to keysymdef.h (default: /usr/include/X11/keysymdef.h)")
+    p.add_argument("--metadata-json", default=None, type=Path,
+                   help="Manifest/catalog JSON with Windows profile metadata for this layout")
     args = p.parse_args()
 
     keysymdef_paths = [args.keysymdef] if args.keysymdef else KEYSYMDEF_PATHS
@@ -676,9 +707,10 @@ def main() -> int:
 
     loader = XkbSymbolsLoader(args.symbols_dir, keysyms)
     var = loader.resolve(args.layout, args.variant)
+    meta_override = load_layout_meta(args.metadata_json, args.layout, args.variant)
 
     out_lines: List[str] = []
-    emit_klc(args.layout, args.variant, var, compose, out_lines, cps=keysym_cps)
+    emit_klc(args.layout, args.variant, var, compose, out_lines, cps=keysym_cps, meta_override=meta_override)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     # KLC files are UTF-16 LE with BOM on Windows, but kbdutool on MSYS accepts
     # UTF-8 too; the reference src/kbdisdv.klc is UTF-8 in this repo, so match.
