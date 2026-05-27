@@ -23,6 +23,7 @@
 param(
     [string]$Klid = '0001040f',
     [string]$HtmlPath,
+    [string]$ExpectedLayoutName,
     [switch]$AssertIcelandicDvorak
 )
 
@@ -49,6 +50,15 @@ public static class LiveKeyboardLayout {
         int cchBuff,
         uint wFlags,
         IntPtr dwhkl);
+}
+
+public static class LiveKeyboardLayoutNames {
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    public static extern int SHLoadIndirectString(
+        string pszSource,
+        StringBuilder pszOutBuf,
+        uint cchOutBuf,
+        IntPtr ppvReserved);
 }
 "@
 
@@ -118,6 +128,39 @@ $hkl = [LiveKeyboardLayout]::LoadKeyboardLayout($Klid, 0x00000080) # KLF_NOTELLS
 if ($hkl -eq [IntPtr]::Zero) {
     $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
     throw "LoadKeyboardLayout($Klid) failed with Win32 error $lastError"
+}
+
+if ($ExpectedLayoutName) {
+    $layoutKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\$Klid"
+    if (-not (Test-Path $layoutKey)) { throw "Keyboard layout registry key not found: $layoutKey" }
+
+    $layoutProps = Get-ItemProperty $layoutKey
+    $displayName = [string]$layoutProps.'Layout Display Name'
+    $layoutText = [string]$layoutProps.'Layout Text'
+    $resolvedName = $layoutText
+    if ($displayName) {
+        $nameBuffer = [Text.StringBuilder]::new(260)
+        $hr = [LiveKeyboardLayoutNames]::SHLoadIndirectString($displayName, $nameBuffer, $nameBuffer.Capacity, [IntPtr]::Zero)
+        if ($hr -eq 0 -and $nameBuffer.Length -gt 0) { $resolvedName = $nameBuffer.ToString() }
+    }
+
+    if ($resolvedName -ne $ExpectedLayoutName) {
+        throw "Registry layout name expected '$ExpectedLayoutName' but resolved '$resolvedName'"
+    }
+
+    Add-Type -AssemblyName System.Windows.Forms
+    $targetHklHex = '0x{0:X8}' -f [uint32]($hkl.ToInt64() -band 0xffffffffL)
+    $installedLanguage = [System.Windows.Forms.InputLanguage]::InstalledInputLanguages |
+        Where-Object { ('0x{0:X8}' -f [uint32]($_.Handle.ToInt64() -band 0xffffffffL)) -eq $targetHklHex } |
+        Select-Object -First 1
+    if (-not $installedLanguage) {
+        throw "HKL $targetHklHex is not present in Windows Forms InstalledInputLanguages"
+    }
+    if ($installedLanguage.LayoutName -ne $ExpectedLayoutName) {
+        throw "Installed input language layout name expected '$ExpectedLayoutName' but got '$($installedLanguage.LayoutName)'"
+    }
+
+    Write-Host "OK: layout display name resolved as '$ExpectedLayoutName' for HKL $targetHklHex."
 }
 
 $rows = @(

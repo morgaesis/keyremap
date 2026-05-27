@@ -88,7 +88,24 @@ if (Test-Path $klcPath) {
 }
 
 $rcText = Get-Content -Path $rcSrc -Raw -Encoding Unicode
-if ($rcText -notmatch '(?s)LANGUAGE\s+9\s*,\s*1.*?\b1000\s+"') {
+function Test-RcStringInLanguage {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][int]$PrimaryLanguage,
+        [Parameter(Mandatory)][int]$SubLanguage,
+        [Parameter(Mandatory)][int]$StringId
+    )
+
+    $pattern = '(?ms)STRINGTABLE\s+\S+\s+LANGUAGE\s+' +
+        [regex]::Escape([string]$PrimaryLanguage) + '\s*,\s*' +
+        [regex]::Escape([string]$SubLanguage) + '\s+BEGIN(?<body>.*?)END'
+    foreach ($match in [regex]::Matches($Text, $pattern)) {
+        if ($match.Groups['body'].Value -match "(?m)^\s*$StringId\s+`"") { return $true }
+    }
+    return $false
+}
+
+if (-not (Test-RcStringInLanguage -Text $rcText -PrimaryLanguage 9 -SubLanguage 1 -StringId 1000)) {
     $escapedLayoutName = $layoutName.Replace('"', '""')
     $rcText += @"
 

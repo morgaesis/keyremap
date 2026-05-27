@@ -137,6 +137,22 @@ function Remove-PreloadKlids {
     }
 }
 
+function Remove-BaseLanguagePreload {
+    param([Parameter(Mandatory)][string]$BaseLangId)
+
+    $preload = 'HKCU:\Keyboard Layout\Preload'
+    if (-not (Test-Path $preload)) { return }
+
+    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
+    foreach ($prop in (Get-Item $preload).Property) {
+        $val = [string](Get-ItemProperty $preload -Name $prop).$prop
+        if ($val.ToLowerInvariant() -eq $baseKlid) {
+            Remove-ItemProperty -Path $preload -Name $prop
+            Write-Host "Removed base-language preload entry (slot $prop -> $val)"
+        }
+    }
+}
+
 function Resolve-LanguageTag {
     param([Parameter(Mandatory)][string]$BaseLangId)
 
@@ -483,6 +499,7 @@ function Install-OneLayout {
 
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
+        Remove-BaseLanguagePreload -BaseLangId $BaseLangId
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         if ($LanguageTag) {
@@ -523,6 +540,7 @@ public static class KbdActivate {
     public const uint KLF_ACTIVATE      = 0x00000001;
     public const uint KLF_SUBSTITUTE_OK = 0x00000002;
     public const uint KLF_REORDER       = 0x00000008;
+    public const uint KLF_REPLACELANG   = 0x00000010;
     public const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
     public const uint WM_SETTINGCHANGE          = 0x001A;
     public const uint WM_INPUTLANGCHANGE        = 0x0051;
@@ -544,7 +562,10 @@ foreach ($installedLayout in $installedLayouts) {
     try {
         $hkl = [KbdActivate]::LoadKeyboardLayout(
             $klid,
-            [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_REORDER)
+            [KbdActivate]::KLF_ACTIVATE -bor
+                [KbdActivate]::KLF_SUBSTITUTE_OK -bor
+                [KbdActivate]::KLF_REORDER -bor
+                [KbdActivate]::KLF_REPLACELANG)
         if ($hkl -eq [IntPtr]::Zero) {
             $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
             Write-Warning "LoadKeyboardLayout($klid) returned NULL (error $code). You may need to sign out."
