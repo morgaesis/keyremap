@@ -195,12 +195,27 @@ function Add-UserLanguageTip {
     $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
     $list = Get-WinUserLanguageList
     $changed = $false
+
+    $lang = $null
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        if ($list[$i].LanguageTag -eq $LanguageTag) { $lang = $list[$i]; break }
+    }
+    if (-not $lang) {
+        $prefix = $BaseLangId.ToUpperInvariant() + ':'
+        for ($i = 0; $i -lt $list.Count; $i++) {
+            $hasSameBase = @($list[$i].InputMethodTips | Where-Object { ([string]$_).ToUpperInvariant().StartsWith($prefix) }).Count -gt 0
+            if ($hasSameBase) { $lang = $list[$i]; break }
+        }
+    }
+
     $emptyProfiles = @()
     foreach ($profile in $list) {
         $remove = @()
         foreach ($tip in @($profile.InputMethodTips)) {
             $parts = ([string]$tip).Split(':')
-            if ($parts.Count -eq 2 -and $parts[1].Equals($Klid, [System.StringComparison]::OrdinalIgnoreCase) -and $profile.LanguageTag -ne $LanguageTag) {
+            if ($parts.Count -eq 2 -and
+                $parts[1].Equals($Klid, [System.StringComparison]::OrdinalIgnoreCase) -and
+                $profile -ne $lang) {
                 $remove += [string]$tip
             }
         }
@@ -216,17 +231,6 @@ function Add-UserLanguageTip {
         Write-Host "Removed empty language profile: $($profile.LanguageTag)"
     }
 
-    $lang = $null
-    for ($i = 0; $i -lt $list.Count; $i++) {
-        if ($list[$i].LanguageTag -eq $LanguageTag) { $lang = $list[$i]; break }
-    }
-    if (-not $lang) {
-        $prefix = $BaseLangId.ToUpperInvariant() + ':'
-        for ($i = 0; $i -lt $list.Count; $i++) {
-            $hasSameBase = @($list[$i].InputMethodTips | Where-Object { ([string]$_).ToUpperInvariant().StartsWith($prefix) }).Count -gt 0
-            if ($hasSameBase) { $lang = $list[$i]; break }
-        }
-    }
     if (-not $lang) {
         $newList = New-WinUserLanguageList $LanguageTag
         $lang = $newList[0]
@@ -325,7 +329,7 @@ function Get-AvailableLayoutIds {
     foreach ($k in $existing) {
         if ($excluded.ContainsKey($k.PSChildName.ToLowerInvariant())) { continue }
         try {
-            $id = (Get-ItemProperty $k.PSPath -Name 'Layout Id' -ErrorAction Stop).'Layout Id'
+            $id = (Get-ItemProperty $k.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
             if ($id) {
                 $layoutIdValue = [Convert]::ToInt32($id, 16)
                 $existingLayoutIds[$id.ToLower()] = $true
