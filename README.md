@@ -116,14 +116,13 @@ After installing on the Windows 11 ARM64 laptop, test:
 Render the installed layout through Windows' live translation APIs:
 
 ```powershell
-.\tests\render-live-layout.ps1 -Klid 0001040f -SubstitutedKlid 0000040f -ExpectedLayoutName "Icelandic Dvorak" -AssertIcelandicDvorak -HtmlPath .\artifacts\is-dvorak-live.html
+.\tests\render-live-layout.ps1 -Klid 0001040f -ExpectedLayoutName "Icelandic Dvorak" -AssertIcelandicDvorak -HtmlPath .\artifacts\is-dvorak-live.html
 ```
 
 This calls `MapVirtualKeyEx` and `ToUnicodeEx` for the registered layout, so it
 checks the same key translation path applications use. It also resolves the
-registered display name through Windows' registry string indirection and checks
-that the base Windows KLID substitutes to the packaged layout. The HTML output
-shows normal, Shift, AltGr, and Shift+AltGr for each physical key.
+registered display name through Windows' registry string indirection. The HTML
+output shows normal, Shift, AltGr, and Shift+AltGr for each physical key.
 
 ## Sources
 

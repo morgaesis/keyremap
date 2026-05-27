@@ -24,7 +24,6 @@ param(
     [string]$Klid = '0001040f',
     [string]$HtmlPath,
     [string]$ExpectedLayoutName,
-    [string]$SubstitutedKlid,
     [switch]$AssertIcelandicDvorak
 )
 
@@ -162,20 +161,6 @@ if ($ExpectedLayoutName) {
     }
 
     Write-Host "OK: layout display name resolved as '$ExpectedLayoutName' for HKL $targetHklHex."
-}
-
-if ($SubstitutedKlid) {
-    $substituteHkl = [LiveKeyboardLayout]::LoadKeyboardLayout($SubstitutedKlid, 0x00000082) # KLF_NOTELLSHELL | KLF_SUBSTITUTE_OK
-    if ($substituteHkl -eq [IntPtr]::Zero) {
-        $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        throw "LoadKeyboardLayout($SubstitutedKlid) with substitutes failed with Win32 error $lastError"
-    }
-    $expectedHklHex = '0x{0:X8}' -f [uint32]($hkl.ToInt64() -band 0xffffffffL)
-    $actualHklHex = '0x{0:X8}' -f [uint32]($substituteHkl.ToInt64() -band 0xffffffffL)
-    if ($actualHklHex -ne $expectedHklHex) {
-        throw "Substituted KLID $SubstitutedKlid resolved to $actualHklHex, expected $expectedHklHex"
-    }
-    Write-Host "OK: substituted KLID $SubstitutedKlid resolves to $Klid ($expectedHklHex)."
 }
 
 $rows = @(

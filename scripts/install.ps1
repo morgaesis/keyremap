@@ -327,15 +327,30 @@ function Set-ProjectSubstitute {
     Write-Host "Set keyboard substitute $baseKlid -> $targetKlid"
 }
 
+function Remove-BaseLanguageSubstitute {
+    param([Parameter(Mandatory)][string]$BaseLangId)
+
+    $substitutes = 'HKCU:\Keyboard Layout\Substitutes'
+    if (-not (Test-Path $substitutes)) { return }
+    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
+    foreach ($prop in @((Get-Item $substitutes).Property)) {
+        if ([string]$prop -eq $baseKlid) {
+            $value = [string](Get-ItemProperty $substitutes -Name $prop).$prop
+            Remove-ItemProperty -Path $substitutes -Name $prop
+            Write-Host "Removed base-language substitute $prop -> $value"
+        }
+    }
+}
+
 function Set-CtfKeyboardSortOrder {
     param(
-        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$VisibleKlid,
         [Parameter(Mandatory)][string]$HklName
     )
 
     $keyboardTipGuid = '{34745C63-B2F0-4784-8B67-5E12C8701A31}'
-    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
-    $path = "HKCU:\Software\Microsoft\CTF\SortOrder\AssemblyItem\0x$baseKlid\$keyboardTipGuid\00000000"
+    $visibleKlidLower = $VisibleKlid.ToLowerInvariant()
+    $path = "HKCU:\Software\Microsoft\CTF\SortOrder\AssemblyItem\0x$visibleKlidLower\$keyboardTipGuid\00000000"
     if (-not (Test-Path $path)) {
         New-Item -Path $path -Force | Out-Null
     }
@@ -343,7 +358,58 @@ function Set-CtfKeyboardSortOrder {
     Set-ItemProperty -Path $path -Name 'CLSID' -Value '{00000000-0000-0000-0000-000000000000}' -Type String
     Set-ItemProperty -Path $path -Name 'Profile' -Value '{00000000-0000-0000-0000-000000000000}' -Type String
     Set-ItemProperty -Path $path -Name 'KeyboardLayout' -Value ([Convert]::ToInt64($HklName, 16)) -Type DWord
-    Write-Host "Set CTF keyboard sort-order for $baseKlid -> HKL $HklName"
+    Write-Host "Set CTF keyboard sort-order for $visibleKlidLower -> HKL $HklName"
+}
+
+function Remove-CtfKeyboardSortOrder {
+    param([Parameter(Mandatory)][string]$VisibleKlid)
+
+    $path = "HKCU:\Software\Microsoft\CTF\SortOrder\AssemblyItem\0x$($VisibleKlid.ToLowerInvariant())"
+    if (Test-Path $path) {
+        Remove-Item -Path $path -Recurse -Force
+        Write-Host "Removed stale CTF keyboard sort-order: $VisibleKlid"
+    }
+}
+
+function Add-CtfLanguageSortOrder {
+    param([Parameter(Mandatory)][string]$VisibleKlid)
+
+    $path = 'HKCU:\Software\Microsoft\CTF\SortOrder\Language'
+    if (-not (Test-Path $path)) {
+        New-Item -Path $path -Force | Out-Null
+    }
+
+    foreach ($prop in @((Get-Item $path).Property)) {
+        $val = [string](Get-ItemProperty $path -Name $prop).$prop
+        if ($val.Equals($VisibleKlid, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "CTF language sort-order already present: $prop -> $val"
+            return
+        }
+    }
+
+    $used = @{}
+    foreach ($prop in (Get-Item $path).Property) {
+        $slot = 0
+        if ([int]::TryParse($prop, [ref]$slot)) { $used[$slot] = $true }
+    }
+    $next = 0
+    while ($used.ContainsKey($next)) { $next++ }
+    New-ItemProperty -Path $path -Name ('{0:d8}' -f $next) -Value $VisibleKlid -PropertyType String -Force | Out-Null
+    Write-Host "Added CTF language sort-order: $('{0:d8}' -f $next) -> $VisibleKlid"
+}
+
+function Remove-CtfLanguageSortOrder {
+    param([Parameter(Mandatory)][string]$VisibleKlid)
+
+    $path = 'HKCU:\Software\Microsoft\CTF\SortOrder\Language'
+    if (-not (Test-Path $path)) { return }
+    foreach ($prop in @((Get-Item $path).Property)) {
+        $val = [string](Get-ItemProperty $path -Name $prop).$prop
+        if ($val.Equals($VisibleKlid, [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-ItemProperty -Path $path -Name $prop
+            Write-Host "Removed stale CTF language sort-order: $prop -> $val"
+        }
+    }
 }
 
 # --- Pick unused KLID + Layout Id ---------------------------------------------
@@ -529,17 +595,22 @@ function Install-OneLayout {
 
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
+        Remove-PreloadKlids -Klids @("0000$BaseLangId")
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
-        Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
-        Add-PreloadKlid -Klid "0000$BaseLangId"
+        Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+        Add-PreloadKlid -Klid $klid
         $hklName = Get-HklNameForKlid -Klid $klid
-        if ($hklName) { Set-CtfKeyboardSortOrder -BaseLangId $BaseLangId -HklName $hklName }
+        Remove-CtfKeyboardSortOrder -VisibleKlid "0000$BaseLangId"
+        Remove-CtfLanguageSortOrder -VisibleKlid "0000$BaseLangId"
+        if ($hklName) { Set-CtfKeyboardSortOrder -VisibleKlid $klid -HklName $hklName }
+        Add-CtfLanguageSortOrder -VisibleKlid $klid
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
             Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
-            Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
-            if ($hklName) { Set-CtfKeyboardSortOrder -BaseLangId $BaseLangId -HklName $hklName }
+            Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+            if ($hklName) { Set-CtfKeyboardSortOrder -VisibleKlid $klid -HklName $hklName }
+            Add-CtfLanguageSortOrder -VisibleKlid $klid
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
         }
