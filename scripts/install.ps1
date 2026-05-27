@@ -294,16 +294,27 @@ function Get-AvailableLayoutIds {
     param(
         [Parameter(Mandatory)][string]$BaseLangId,
         [int]$PreferredHighWord = -1,
-        [int]$PreferredLayoutId = -1
+        [int]$PreferredLayoutId = -1,
+        [string[]]$ExcludeKlids = @()
     )
 
     $existing = Get-ChildItem $LayoutsKey
+    $excluded = @{}
+    foreach ($klid in $ExcludeKlids) {
+        if ($klid) { $excluded[$klid.ToLowerInvariant()] = $true }
+    }
     $existingKlids = $existing | ForEach-Object { $_.PSChildName }
     $existingLayoutIds = @{}
+    $existingLayoutLowIds = @{}
     foreach ($k in $existing) {
+        if ($excluded.ContainsKey($k.PSChildName.ToLowerInvariant())) { continue }
         try {
             $id = (Get-ItemProperty $k.PSPath -Name 'Layout Id' -ErrorAction Stop).'Layout Id'
-            if ($id) { $existingLayoutIds[$id.ToLower()] = $true }
+            if ($id) {
+                $layoutIdValue = [Convert]::ToInt32($id, 16)
+                $existingLayoutIds[$id.ToLower()] = $true
+                $existingLayoutLowIds[('{0:x3}' -f ($layoutIdValue -band 0xfff))] = $true
+            }
         } catch { }
     }
     $klid = $null
@@ -321,12 +332,14 @@ function Get-AvailableLayoutIds {
     $layoutId = $null
     if ($PreferredLayoutId -ge 0x00a0 -and $PreferredLayoutId -le 0xffff) {
         $candidate = ('{0:x4}' -f $PreferredLayoutId)
-        if (-not $existingLayoutIds.ContainsKey($candidate)) { $layoutId = $candidate }
+        $candidateLow = ('{0:x3}' -f ($PreferredLayoutId -band 0xfff))
+        if (-not $existingLayoutIds.ContainsKey($candidate) -and -not $existingLayoutLowIds.ContainsKey($candidateLow)) { $layoutId = $candidate }
     }
     for ($id = 0x00a0; $id -le 0xffff; $id++) {
         if ($layoutId) { break }
         $candidate = ('{0:x4}' -f $id)
-        if (-not $existingLayoutIds.ContainsKey($candidate)) { $layoutId = $candidate; break }
+        $candidateLow = ('{0:x3}' -f ($id -band 0xfff))
+        if (-not $existingLayoutIds.ContainsKey($candidate) -and -not $existingLayoutLowIds.ContainsKey($candidateLow)) { $layoutId = $candidate; break }
     }
     if (-not $layoutId) { throw "No free Layout Id available in range 00a0..ffff" }
 
@@ -375,7 +388,12 @@ function Install-OneLayout {
     } else {
         if ($matchingPreferredPayload -and $Force) {
             $klid = $matchingPreferredPayload[0].PSChildName
-            $layoutIdHex = $preferredLayoutIdHex
+            $currentLayoutIdHex = (Get-ItemProperty $matchingPreferredPayload[0].PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+            $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId -PreferredHighWord $preferredHighWord -PreferredLayoutId $preferredLayoutId -ExcludeKlids @($klid)
+            $layoutIdHex = $ids.LayoutId
+            if ($currentLayoutIdHex -and $currentLayoutIdHex.ToLowerInvariant() -ne $layoutIdHex) {
+                Write-Host "Changing Layout Id for $klid from $currentLayoutIdHex to $layoutIdHex to avoid a Windows layout-name collision."
+            }
             Write-Host "Refreshing existing KLID: $klid (Layout Id: $layoutIdHex)"
         } else {
             $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId -PreferredHighWord $preferredHighWord -PreferredLayoutId $preferredLayoutId
