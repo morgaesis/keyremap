@@ -123,8 +123,9 @@ function Get-InstalledLayoutEntries {
 }
 
 function Remove-PreloadKlids {
-    param([Parameter(Mandatory)][string[]]$Klids)
+    param([string[]]$Klids)
 
+    if (-not $Klids -or $Klids.Count -eq 0) { return }
     $preload = 'HKCU:\Keyboard Layout\Preload'
     if (-not (Test-Path $preload)) { return }
     foreach ($prop in (Get-Item $preload).Property) {
@@ -289,6 +290,22 @@ function Remove-ProjectSubstitutes {
     }
 }
 
+function Set-ProjectSubstitute {
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$Klid
+    )
+
+    $substitutes = 'HKCU:\Keyboard Layout\Substitutes'
+    if (-not (Test-Path $substitutes)) {
+        New-Item -Path $substitutes -Force | Out-Null
+    }
+    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
+    $targetKlid = $Klid.ToLowerInvariant()
+    Set-ItemProperty -Path $substitutes -Name $baseKlid -Value $targetKlid -Type String
+    Write-Host "Set keyboard substitute $baseKlid -> $targetKlid"
+}
+
 # --- Pick unused KLID + Layout Id ---------------------------------------------
 function Get-AvailableLayoutIds {
     param(
@@ -377,7 +394,7 @@ function Install-OneLayout {
         try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
     } | Select-Object -First 1)
     $matchingPreferredPayload = @($matchingPayload | Where-Object { $_.PSChildName -eq $preferredKlid } | Select-Object -First 1)
-    $staleKlids = @($existing | ForEach-Object { $_.PSChildName })
+    $staleKlids = @()
 
     if ($existing -and -not $Force) {
         $entry = if ($matchingPayload) { $matchingPayload[0] } else { $existing[0] }
@@ -434,6 +451,7 @@ function Install-OneLayout {
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
+            Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
             Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
@@ -455,6 +473,12 @@ public static class KbdActivate {
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint Msg, UIntPtr wParam, IntPtr lParam,
         uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+
+    [DllImport("user32.dll")]
+    public static extern int GetKeyboardLayoutList(int nBuff, IntPtr[] lpList);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnloadKeyboardLayout(IntPtr hkl);
 
     public const uint KLF_ACTIVATE      = 0x00000001;
     public const uint KLF_SUBSTITUTE_OK = 0x00000002;
@@ -485,6 +509,30 @@ foreach ($klid in $installedKlids) {
             Write-Warning "LoadKeyboardLayout($klid) returned NULL (error $code). You may need to sign out."
         } else {
             Write-Host ("LoadKeyboardLayout OK for {0} (HKL=0x{1:X})" -f $klid, $hkl.ToInt64())
+        }
+        $baseLangId = $klid.Substring($klid.Length - 4).ToUpperInvariant()
+        $keepHkls = @{}
+        foreach ($keepKlid in $installedKlids) {
+            if (-not $keepKlid.EndsWith($baseLangId, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            $keepKey = Join-Path $LayoutsKey $keepKlid.ToLowerInvariant()
+            $keepLayoutId = (Get-ItemProperty $keepKey -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+            if ($keepLayoutId) {
+                $layoutIdValue = [Convert]::ToInt32($keepLayoutId, 16)
+                $keepHkls[('F{0:X3}{1}' -f ($layoutIdValue -band 0xfff), $baseLangId)] = $true
+            }
+        }
+        $layoutCount = [KbdActivate]::GetKeyboardLayoutList(0, $null)
+        if ($layoutCount -gt 0) {
+            $loadedLayouts = New-Object IntPtr[] $layoutCount
+            [void][KbdActivate]::GetKeyboardLayoutList($layoutCount, $loadedLayouts)
+            foreach ($loadedHkl in $loadedLayouts) {
+                $loadedHex = '{0:X8}' -f [uint32]($loadedHkl.ToInt64() -band 0xffffffffL)
+                if ($loadedHex.Substring(4, 4) -eq $baseLangId -and -not $keepHkls.ContainsKey($loadedHex)) {
+                    if ([KbdActivate]::UnloadKeyboardLayout($loadedHkl)) {
+                        Write-Host "Unloaded stale live keyboard layout HKL $loadedHex"
+                    }
+                }
+            }
         }
         $result = [UIntPtr]::Zero
         [void][KbdActivate]::SendMessageTimeout(

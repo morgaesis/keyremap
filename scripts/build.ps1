@@ -74,10 +74,33 @@ $defSrc = Join-Path $SrcDir "$base.def"
 $outDll = Join-Path $OutDir 'kbdisdv.dll'
 $resFile = Join-Path $OutDir "$base.res"
 $objFile = Join-Path $OutDir "$base.obj"
+$patchedRcSrc = Join-Path $OutDir "$base.patched.rc"
 
 foreach ($path in @($cSrc, $rcSrc, $defSrc)) {
     if (-not (Test-Path $path)) { throw "Missing source: $path." }
 }
+
+$layoutName = 'Icelandic Dvorak'
+$klcPath = Join-Path $RepoRoot "src\$base.klc"
+if (Test-Path $klcPath) {
+    $klcText = Get-Content -Path $klcPath -Raw -Encoding UTF8
+    if ($klcText -match '(?m)^KBD\s+\S+\s+"([^"]+)"') { $layoutName = $matches[1] }
+}
+
+$rcText = Get-Content -Path $rcSrc -Raw -Encoding Unicode
+if ($rcText -notmatch '(?s)LANGUAGE\s+9\s*,\s*1.*?\b1000\s+"') {
+    $escapedLayoutName = $layoutName.Replace('"', '""')
+    $rcText += @"
+
+STRINGTABLE DISCARDABLE
+LANGUAGE 9, 1
+BEGIN
+    1000    "$escapedLayoutName"
+END
+
+"@
+}
+Set-Content -Path $patchedRcSrc -Value $rcText -Encoding Unicode
 
 $buildCmd = @"
 @echo on
@@ -89,7 +112,7 @@ cl.exe /Bv 2>&1 | findstr /C:"for $machineName" >nul || (
     exit /b 10
 )
 
-rc.exe /nologo /fo "$resFile" "$rcSrc" || exit /b 2
+rc.exe /nologo /fo "$resFile" "$patchedRcSrc" || exit /b 2
 
 cl.exe /nologo /c /O2 /W3 /GS- /DWIN32 /D_WINDLL /D_USRDLL /DKBD_TYPE=4 ^
     /I"$kbdH" /I"$SrcDir" ^
