@@ -137,20 +137,31 @@ function Remove-PreloadKlids {
     }
 }
 
-function Remove-BaseLanguagePreload {
-    param([Parameter(Mandatory)][string]$BaseLangId)
+function Add-PreloadKlid {
+    param([Parameter(Mandatory)][string]$Klid)
 
     $preload = 'HKCU:\Keyboard Layout\Preload'
-    if (-not (Test-Path $preload)) { return }
+    if (-not (Test-Path $preload)) {
+        New-Item -Path $preload -Force | Out-Null
+    }
 
-    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
     foreach ($prop in (Get-Item $preload).Property) {
         $val = [string](Get-ItemProperty $preload -Name $prop).$prop
-        if ($val.ToLowerInvariant() -eq $baseKlid) {
-            Remove-ItemProperty -Path $preload -Name $prop
-            Write-Host "Removed base-language preload entry (slot $prop -> $val)"
+        if ($val.Equals($Klid, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "User preload already present: slot $prop -> $val"
+            return
         }
     }
+
+    $used = @{}
+    foreach ($prop in (Get-Item $preload).Property) {
+        $slot = 0
+        if ([int]::TryParse($prop, [ref]$slot)) { $used[$slot] = $true }
+    }
+    $next = 1
+    while ($used.ContainsKey($next)) { $next++ }
+    New-ItemProperty -Path $preload -Name ([string]$next) -Value $Klid -PropertyType String -Force | Out-Null
+    Write-Host "Added user preload entry: slot $next -> $Klid"
 }
 
 function Resolve-LanguageTag {
@@ -314,6 +325,25 @@ function Set-ProjectSubstitute {
     $targetKlid = $Klid.ToLowerInvariant()
     Set-ItemProperty -Path $substitutes -Name $baseKlid -Value $targetKlid -Type String
     Write-Host "Set keyboard substitute $baseKlid -> $targetKlid"
+}
+
+function Set-CtfKeyboardSortOrder {
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$HklName
+    )
+
+    $keyboardTipGuid = '{34745C63-B2F0-4784-8B67-5E12C8701A31}'
+    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
+    $path = "HKCU:\Software\Microsoft\CTF\SortOrder\AssemblyItem\0x$baseKlid\$keyboardTipGuid\00000000"
+    if (-not (Test-Path $path)) {
+        New-Item -Path $path -Force | Out-Null
+    }
+
+    Set-ItemProperty -Path $path -Name 'CLSID' -Value '{00000000-0000-0000-0000-000000000000}' -Type String
+    Set-ItemProperty -Path $path -Name 'Profile' -Value '{00000000-0000-0000-0000-000000000000}' -Type String
+    Set-ItemProperty -Path $path -Name 'KeyboardLayout' -Value ([Convert]::ToInt64($HklName, 16)) -Type DWord
+    Write-Host "Set CTF keyboard sort-order for $baseKlid -> HKL $HklName"
 }
 
 # --- Pick unused KLID + Layout Id ---------------------------------------------
@@ -499,12 +529,17 @@ function Install-OneLayout {
 
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
-        Remove-BaseLanguagePreload -BaseLangId $BaseLangId
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
+        Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
+        Add-PreloadKlid -Klid "0000$BaseLangId"
+        $hklName = Get-HklNameForKlid -Klid $klid
+        if ($hklName) { Set-CtfKeyboardSortOrder -BaseLangId $BaseLangId -HklName $hklName }
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
             Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
+            Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
+            if ($hklName) { Set-CtfKeyboardSortOrder -BaseLangId $BaseLangId -HklName $hklName }
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
         }
