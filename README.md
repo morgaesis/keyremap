@@ -113,6 +113,16 @@ After installing on the Windows 11 ARM64 laptop, test:
 - elevated prompt text entry
 - sign-out/sign-in persistence
 
+Render the installed layout through Windows' live translation APIs:
+
+```powershell
+.\tests\render-live-layout.ps1 -Klid 0001040f -AssertIcelandicDvorak -HtmlPath .\artifacts\is-dvorak-live.html
+```
+
+This calls `MapVirtualKeyEx` and `ToUnicodeEx` for the registered layout, so it
+checks the same key translation path applications use. The HTML output shows
+normal, Shift, AltGr, and Shift+AltGr for each physical key.
+
 ## Sources
 
 - xkeyboard-config `symbols/is`, variant `dvorak`

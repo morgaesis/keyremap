@@ -17,6 +17,7 @@ build/
 
 # Local scratch
 .scratch/
+artifacts/
 tmp/
 
 generated/
