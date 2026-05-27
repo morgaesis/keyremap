@@ -107,15 +107,17 @@ function Get-LayoutHashLayoutId {
 function Get-InstalledLayoutEntries {
     param(
         [Parameter(Mandatory)][string]$LayoutText,
+        [Parameter(Mandatory)][string]$ProjectLayoutId,
         [Parameter(Mandatory)][string[]]$LayoutFiles
     )
 
     Get-ChildItem $LayoutsKey | Where-Object {
         try {
             $props = Get-ItemProperty $_.PSPath
-            $sameProduct = $props.'Layout Product Code' -eq $ProductCode -and $props.'Layout Text' -eq $LayoutText
+            $sameProjectLayout = $props.'Layout Product Code' -eq $ProductCode -and $props.'Keyremap Layout Id' -eq $ProjectLayoutId
+            $sameLegacyProduct = $props.'Layout Product Code' -eq $ProductCode -and $props.'Layout Text' -eq $LayoutText
             $sameFile = $LayoutFiles -contains $props.'Layout File'
-            $sameProduct -or $sameFile
+            $sameProjectLayout -or $sameLegacyProduct -or $sameFile
         } catch {
             $false
         }
@@ -170,11 +172,8 @@ function Remove-StaleUserLanguageTips {
             $parts = ([string]$tip).Split(':')
             if ($parts.Count -ne 2) { continue }
             $keyboard = $parts[1].ToUpperInvariant()
-            $keyPath = Join-Path $LayoutsKey $keyboard.ToLowerInvariant()
-            $isGenerated = $keyboard -match "^[A-D][0-9A-F]{3}$base$"
             $isKnownStale = $stale.ContainsKey($keyboard)
-            $isDanglingGenerated = $isGenerated -and -not (Test-Path $keyPath)
-            if ($isKnownStale -or $isDanglingGenerated) { $remove += [string]$tip }
+            if ($isKnownStale) { $remove += [string]$tip }
         }
         foreach ($tip in $remove) {
             [void]$lang.InputMethodTips.Remove($tip)
@@ -363,9 +362,41 @@ function Get-AvailableLayoutIds {
     return @{ Klid = $klid; LayoutId = $layoutId }
 }
 
+function Get-HklNameForKlid {
+    param([Parameter(Mandatory)][string]$Klid)
+
+    $keyPath = Join-Path $LayoutsKey $Klid.ToLowerInvariant()
+    $layoutIdHex = (Get-ItemProperty $keyPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+    if (-not $layoutIdHex) { return $null }
+    $layoutIdValue = [Convert]::ToInt32($layoutIdHex, 16)
+    $baseLangId = $Klid.Substring($Klid.Length - 4).ToUpperInvariant()
+    return ('F{0:X3}{1}' -f ($layoutIdValue -band 0xfff), $baseLangId)
+}
+
+function Remove-StalePayloadFiles {
+    param(
+        [string[]]$PayloadFiles,
+        [Parameter(Mandatory)][string]$KeepPayloadFile
+    )
+
+    if (-not $PayloadFiles -or $PayloadFiles.Count -eq 0) { return }
+    foreach ($file in @($PayloadFiles | Where-Object { $_ } | Select-Object -Unique)) {
+        if ($file.Equals($KeepPayloadFile, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $path = Join-Path $System32 $file
+        if (-not (Test-Path $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Force
+            Write-Host "Removed stale payload DLL: $path"
+        } catch {
+            Write-Warning "Could not remove stale payload DLL ${path}: $_"
+        }
+    }
+}
+
 function Install-OneLayout {
     param([Parameter(Mandatory)]$Layout)
 
+    $ProjectLayoutId = [string]$Layout.id
     $LayoutFile = [string]$Layout.dllName
     $LayoutText = [string]$Layout.displayName
     $BaseLangId = [string]$Layout.baseLangId
@@ -389,12 +420,14 @@ function Install-OneLayout {
     $preferredLayoutId = Get-LayoutHashLayoutId -SourceDll $sourceDll
     $preferredLayoutIdHex = ('{0:x4}' -f $preferredLayoutId)
     $preferredKlid = ('{0:x4}{1}' -f $preferredHighWord, $BaseLangId)
-    $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -LayoutFiles @($LayoutFile, $payloadFile))
+    $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId -LayoutFiles @($LayoutFile, $payloadFile))
     $matchingPayload = @($existing | Where-Object {
         try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
     } | Select-Object -First 1)
     $matchingPreferredPayload = @($matchingPayload | Where-Object { $_.PSChildName -eq $preferredKlid } | Select-Object -First 1)
     $staleKlids = @()
+    $staleHkls = @()
+    $stalePayloadFiles = @()
 
     if ($existing -and -not $Force) {
         $entry = if ($matchingPayload) { $matchingPayload[0] } else { $existing[0] }
@@ -427,6 +460,10 @@ function Install-OneLayout {
     $staleEntries = @($existing | Where-Object { $_.PSChildName -ne $klid })
     if ($staleEntries.Count -gt 0) {
         $staleKlids = @($staleEntries | ForEach-Object { $_.PSChildName })
+        $staleHkls = @($staleKlids | ForEach-Object { Get-HklNameForKlid -Klid $_ } | Where-Object { $_ })
+        $stalePayloadFiles = @($staleEntries | ForEach-Object {
+            try { (Get-ItemProperty $_.PSPath).'Layout File' } catch { $null }
+        })
         Remove-PreloadKlids -Klids $staleKlids
         foreach ($entry in $staleEntries) {
             Write-Host "Removing stale HKLM key: $($entry.PSChildName)"
@@ -440,9 +477,10 @@ function Install-OneLayout {
     }
     Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $payloadFile -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
-    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value $LayoutText -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$payloadFile,-1000" -Type ExpandString
     Set-ItemProperty -Path $keyPath -Name 'Layout Id' -Value $layoutIdHex -Type String
     Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Keyremap Layout Id' -Value $ProjectLayoutId -Type String
     Write-Host "Registered at $keyPath"
 
     if ($AddToCurrentUser) {
@@ -458,7 +496,12 @@ function Install-OneLayout {
         }
     }
 
-    return $klid
+    Remove-StalePayloadFiles -PayloadFiles $stalePayloadFiles -KeepPayloadFile $payloadFile
+
+    return [pscustomobject]@{
+        Klid = $klid
+        StaleHkls = @($staleHkls)
+    }
 }
 
 # --- Live activation (no sign-out required) -----------------------------------
@@ -491,15 +534,16 @@ public static class KbdActivate {
 }
 '@ -ErrorAction SilentlyContinue
 
-$installedKlids = @()
+$installedLayouts = @()
 foreach ($id in $LayoutId) {
     if (-not $layoutsById.ContainsKey($id)) { throw "Unknown layout id '$id' in manifest $ManifestPath" }
     $layout = $layoutsById[$id]
     if (-not [bool]$layout.packaged) { throw "Layout '$id' is not packaged yet." }
-    $installedKlids += Install-OneLayout -Layout $layout
+    $installedLayouts += Install-OneLayout -Layout $layout
 }
 
-foreach ($klid in $installedKlids) {
+foreach ($installedLayout in $installedLayouts) {
+    $klid = [string]$installedLayout.Klid
     try {
         $hkl = [KbdActivate]::LoadKeyboardLayout(
             $klid,
@@ -510,24 +554,17 @@ foreach ($klid in $installedKlids) {
         } else {
             Write-Host ("LoadKeyboardLayout OK for {0} (HKL=0x{1:X})" -f $klid, $hkl.ToInt64())
         }
-        $baseLangId = $klid.Substring($klid.Length - 4).ToUpperInvariant()
-        $keepHkls = @{}
-        foreach ($keepKlid in $installedKlids) {
-            if (-not $keepKlid.EndsWith($baseLangId, [StringComparison]::OrdinalIgnoreCase)) { continue }
-            $keepKey = Join-Path $LayoutsKey $keepKlid.ToLowerInvariant()
-            $keepLayoutId = (Get-ItemProperty $keepKey -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
-            if ($keepLayoutId) {
-                $layoutIdValue = [Convert]::ToInt32($keepLayoutId, 16)
-                $keepHkls[('F{0:X3}{1}' -f ($layoutIdValue -band 0xfff), $baseLangId)] = $true
-            }
+        $staleHkls = @{}
+        foreach ($staleHkl in @($installedLayout.StaleHkls)) {
+            if ($staleHkl) { $staleHkls[[string]$staleHkl] = $true }
         }
         $layoutCount = [KbdActivate]::GetKeyboardLayoutList(0, $null)
-        if ($layoutCount -gt 0) {
+        if ($layoutCount -gt 0 -and $staleHkls.Count -gt 0) {
             $loadedLayouts = New-Object IntPtr[] $layoutCount
             [void][KbdActivate]::GetKeyboardLayoutList($layoutCount, $loadedLayouts)
             foreach ($loadedHkl in $loadedLayouts) {
                 $loadedHex = '{0:X8}' -f [uint32]($loadedHkl.ToInt64() -band 0xffffffffL)
-                if ($loadedHex.Substring(4, 4) -eq $baseLangId -and -not $keepHkls.ContainsKey($loadedHex)) {
+                if ($staleHkls.ContainsKey($loadedHex)) {
                     if ([KbdActivate]::UnloadKeyboardLayout($loadedHkl)) {
                         Write-Host "Unloaded stale live keyboard layout HKL $loadedHex"
                     }
