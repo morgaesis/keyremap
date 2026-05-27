@@ -91,9 +91,7 @@ function Get-LayoutPayloadName {
 function Get-LayoutHashHighWord {
     param([Parameter(Mandatory)][string]$SourceDll)
 
-    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
-    $seed = [Convert]::ToInt32($hash.Substring(0, 4), 16)
-    return 0xb000 + ($seed % 0x3000)
+    return 1
 }
 
 function Get-LayoutHashLayoutId {
@@ -192,9 +190,7 @@ function Add-UserLanguageTip {
         [Parameter(Mandatory)][string]$Klid
     )
 
-    $baseTip = ('{0}:0000{0}' -f $BaseLangId.ToUpperInvariant())
-    $targetTip = $baseTip
-    $customTipKeyboard = $Klid.ToUpperInvariant()
+    $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
     $list = Get-WinUserLanguageList
     $changed = $false
 
@@ -216,13 +212,14 @@ function Add-UserLanguageTip {
         foreach ($tip in @($profile.InputMethodTips)) {
             $parts = ([string]$tip).Split(':')
             if ($parts.Count -eq 2 -and
-                $parts[1].Equals($customTipKeyboard, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $parts[1].Equals($Klid, [System.StringComparison]::OrdinalIgnoreCase) -and
+                $profile -ne $lang) {
                 $remove += [string]$tip
             }
         }
         foreach ($tip in $remove) {
             [void]$profile.InputMethodTips.Remove($tip)
-            Write-Host "Removed direct custom input method $tip from $($profile.LanguageTag)"
+            Write-Host "Removed relocated input method $tip from $($profile.LanguageTag)"
             $changed = $true
         }
         if ($remove.Count -gt 0 -and $profile.InputMethodTips.Count -eq 0) { $emptyProfiles += $profile }
@@ -279,7 +276,8 @@ function Remove-ProjectSubstitutes {
         $propIsStale = $stale.ContainsKey($propLower)
         $isWrongBaseRedirect = $propIsStale -and $valueString -eq "0000$BaseLangId"
         $isWrongGeneratedRedirect = $propIsStale -and $allowed.ContainsKey($valueLower)
-        if ($valueIsStale -or $isWrongBaseRedirect -or $isWrongGeneratedRedirect) {
+        $isProjectBaseRedirect = $propLower -eq "0000$($BaseLangId.ToLowerInvariant())" -and $allowed.ContainsKey($valueLower)
+        if ($valueIsStale -or $isWrongBaseRedirect -or $isWrongGeneratedRedirect -or $isProjectBaseRedirect) {
             Remove-ItemProperty -Path $substitutes -Name $propString
             Write-Host "Removed stale keyboard substitute $propString -> $valueString"
         }
@@ -331,16 +329,16 @@ function Get-AvailableLayoutIds {
         } catch { }
     }
     $klid = $null
-    if ($PreferredHighWord -ge 0xa000 -and $PreferredHighWord -lt 0xffff) {
+    if ($PreferredHighWord -ge 0x0001 -and $PreferredHighWord -le 0x0fff) {
         $candidate = ('{0:x4}{1}' -f $PreferredHighWord, $BaseLangId)
         if ($existingKlids -notcontains $candidate) { $klid = $candidate }
     }
-    for ($hi = 0xa000; $hi -lt 0xffff; $hi++) {
+    for ($hi = 0x0001; $hi -le 0x0fff; $hi++) {
         if ($klid) { break }
         $candidate = ('{0:x4}{1}' -f $hi, $BaseLangId)
         if ($existingKlids -notcontains $candidate) { $klid = $candidate; break }
     }
-    if (-not $klid) { throw "No free KLID available in range a000..ffff" }
+    if (-not $klid) { throw "No free variant KLID available in range 0001..0fff for LANGID $BaseLangId" }
 
     $layoutId = $null
     if ($PreferredLayoutId -ge 0x00a0 -and $PreferredLayoutId -le 0xffff) {
@@ -433,12 +431,15 @@ function Install-OneLayout {
         $layoutIdHex = (Get-ItemProperty $entry.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
         if (-not $layoutIdHex) { $layoutIdHex = (Get-AvailableLayoutIds -BaseLangId $BaseLangId).LayoutId }
     } else {
-        if ($matchingPreferredPayload -and $Force) {
-            $klid = $matchingPreferredPayload[0].PSChildName
-            $currentLayoutIdHex = (Get-ItemProperty $matchingPreferredPayload[0].PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
+        $refreshEntry = if ($matchingPreferredPayload) { $matchingPreferredPayload[0] } elseif ($matchingPayload) { $matchingPayload[0] } elseif ($existing) { $existing[0] } else { $null }
+        if ($refreshEntry -and $Force) {
+            $klid = $refreshEntry.PSChildName
+            $currentLayoutIdHex = (Get-ItemProperty $refreshEntry.PSPath -Name 'Layout Id' -ErrorAction SilentlyContinue).'Layout Id'
             $ids = Get-AvailableLayoutIds -BaseLangId $BaseLangId -PreferredHighWord $preferredHighWord -PreferredLayoutId $preferredLayoutId -ExcludeKlids @($klid)
             $layoutIdHex = $ids.LayoutId
             if ($currentLayoutIdHex -and $currentLayoutIdHex.ToLowerInvariant() -ne $layoutIdHex) {
+                $currentLayoutIdValue = [Convert]::ToInt32($currentLayoutIdHex, 16)
+                $staleHkls += ('F{0:X3}{1}' -f ($currentLayoutIdValue -band 0xfff), $BaseLangId.ToUpperInvariant())
                 Write-Host "Changing Layout Id for $klid from $currentLayoutIdHex to $layoutIdHex to avoid a Windows layout-name collision."
             }
             Write-Host "Refreshing existing KLID: $klid (Layout Id: $layoutIdHex)"
@@ -486,7 +487,6 @@ function Install-OneLayout {
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         if ($LanguageTag) {
             Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
-            Set-ProjectSubstitute -BaseLangId $BaseLangId -Klid $klid
             Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
@@ -542,15 +542,14 @@ foreach ($id in $LayoutId) {
 foreach ($installedLayout in $installedLayouts) {
     $klid = [string]$installedLayout.Klid
     try {
-        $baseKlid = '0000' + $klid.Substring($klid.Length - 4)
         $hkl = [KbdActivate]::LoadKeyboardLayout(
-            $baseKlid,
-            [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_SUBSTITUTE_OK -bor [KbdActivate]::KLF_REORDER)
+            $klid,
+            [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_REORDER)
         if ($hkl -eq [IntPtr]::Zero) {
             $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            Write-Warning "LoadKeyboardLayout($baseKlid) returned NULL (error $code). You may need to sign out."
+            Write-Warning "LoadKeyboardLayout($klid) returned NULL (error $code). You may need to sign out."
         } else {
-            Write-Host ("LoadKeyboardLayout OK for {0} -> {1} (HKL=0x{2:X})" -f $baseKlid, $klid, $hkl.ToInt64())
+            Write-Host ("LoadKeyboardLayout OK for {0} (HKL=0x{1:X})" -f $klid, $hkl.ToInt64())
         }
         $staleHkls = @{}
         foreach ($staleHkl in @($installedLayout.StaleHkls)) {
