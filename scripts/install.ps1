@@ -192,7 +192,9 @@ function Add-UserLanguageTip {
         [Parameter(Mandatory)][string]$Klid
     )
 
-    $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
+    $baseTip = ('{0}:0000{0}' -f $BaseLangId.ToUpperInvariant())
+    $targetTip = $baseTip
+    $customTipKeyboard = $Klid.ToUpperInvariant()
     $list = Get-WinUserLanguageList
     $changed = $false
 
@@ -214,14 +216,13 @@ function Add-UserLanguageTip {
         foreach ($tip in @($profile.InputMethodTips)) {
             $parts = ([string]$tip).Split(':')
             if ($parts.Count -eq 2 -and
-                $parts[1].Equals($Klid, [System.StringComparison]::OrdinalIgnoreCase) -and
-                $profile -ne $lang) {
+                $parts[1].Equals($customTipKeyboard, [System.StringComparison]::OrdinalIgnoreCase)) {
                 $remove += [string]$tip
             }
         }
         foreach ($tip in $remove) {
             [void]$profile.InputMethodTips.Remove($tip)
-            Write-Host "Removed relocated input method $tip from $($profile.LanguageTag)"
+            Write-Host "Removed direct custom input method $tip from $($profile.LanguageTag)"
             $changed = $true
         }
         if ($remove.Count -gt 0 -and $profile.InputMethodTips.Count -eq 0) { $emptyProfiles += $profile }
@@ -246,14 +247,6 @@ function Add-UserLanguageTip {
         $changed = $true
     } else {
         Write-Host "User language input method already present: $targetTip"
-    }
-    $baseTip = ('{0}:0000{0}' -f $BaseLangId.ToUpperInvariant())
-    if ($lang.InputMethodTips.Count -eq 2 -and
-        ($lang.InputMethodTips -contains $targetTip) -and
-        ($lang.InputMethodTips -contains $baseTip)) {
-        [void]$lang.InputMethodTips.Remove($baseTip)
-        Write-Host "Removed auto-added base input method: $baseTip"
-        $changed = $true
     }
     if ($changed) { Set-WinUserLanguageList $list -Force }
 }
@@ -549,14 +542,15 @@ foreach ($id in $LayoutId) {
 foreach ($installedLayout in $installedLayouts) {
     $klid = [string]$installedLayout.Klid
     try {
+        $baseKlid = '0000' + $klid.Substring($klid.Length - 4)
         $hkl = [KbdActivate]::LoadKeyboardLayout(
-            $klid,
+            $baseKlid,
             [KbdActivate]::KLF_ACTIVATE -bor [KbdActivate]::KLF_SUBSTITUTE_OK -bor [KbdActivate]::KLF_REORDER)
         if ($hkl -eq [IntPtr]::Zero) {
             $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            Write-Warning "LoadKeyboardLayout($klid) returned NULL (error $code). You may need to sign out."
+            Write-Warning "LoadKeyboardLayout($baseKlid) returned NULL (error $code). You may need to sign out."
         } else {
-            Write-Host ("LoadKeyboardLayout OK for {0} (HKL=0x{1:X})" -f $klid, $hkl.ToInt64())
+            Write-Host ("LoadKeyboardLayout OK for {0} -> {1} (HKL=0x{2:X})" -f $baseKlid, $klid, $hkl.ToInt64())
         }
         $staleHkls = @{}
         foreach ($staleHkl in @($installedLayout.StaleHkls)) {
