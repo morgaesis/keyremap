@@ -116,7 +116,7 @@ After installing on the Windows 11 ARM64 laptop, test:
 Render the installed layout through Windows' live translation APIs:
 
 ```powershell
-.\tests\render-live-layout.ps1 -Klid 0001040f -ExpectedLayoutName "Icelandic Dvorak" -AssertIcelandicDvorak -HtmlPath .\artifacts\is-dvorak-live.html
+.\tests\render-live-layout.ps1 -Klid 0000040f -ExpectedLayoutName "Icelandic Dvorak" -AssertIcelandicDvorak -HtmlPath .\artifacts\is-dvorak-live.html
 ```
 
 This calls `MapVirtualKeyEx` and `ToUnicodeEx` for the registered layout, so it

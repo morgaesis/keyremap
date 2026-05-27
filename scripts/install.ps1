@@ -275,6 +275,42 @@ function Add-UserLanguageTip {
     if ($changed) { Set-WinUserLanguageList $list -Force }
 }
 
+function Set-UserLanguageTipExclusive {
+    param(
+        [Parameter(Mandatory)][string]$LanguageTag,
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$Klid
+    )
+
+    $targetTip = ('{0}:{1}' -f $BaseLangId.ToUpperInvariant(), $Klid.ToUpperInvariant())
+    $prefix = $BaseLangId.ToUpperInvariant() + ':'
+    $list = Get-WinUserLanguageList
+    $lang = $null
+    foreach ($item in $list) {
+        if ($item.LanguageTag -eq $LanguageTag) { $lang = $item; break }
+    }
+    if (-not $lang) {
+        $newList = New-WinUserLanguageList $LanguageTag
+        $lang = $newList[0]
+        $list.Add($lang)
+    }
+
+    foreach ($item in $list) {
+        foreach ($tip in @($item.InputMethodTips)) {
+            $tipString = [string]$tip
+            if ($tipString.ToUpperInvariant().StartsWith($prefix) -and $tipString -ne $targetTip) {
+                [void]$item.InputMethodTips.Remove($tipString)
+                Write-Host "Removed competing language input method: $tipString"
+            }
+        }
+    }
+    if (-not ($lang.InputMethodTips -contains $targetTip)) {
+        [void]$lang.InputMethodTips.Add($targetTip)
+        Write-Host "Added user language input method: $targetTip"
+    }
+    Set-WinUserLanguageList $list -Force
+}
+
 function Remove-ProjectSubstitutes {
     param(
         [Parameter(Mandatory)][string]$BaseLangId,
@@ -410,6 +446,42 @@ function Remove-CtfLanguageSortOrder {
             Write-Host "Removed stale CTF language sort-order: $prop -> $val"
         }
     }
+}
+
+function Set-BaseLayoutOverride {
+    param(
+        [Parameter(Mandatory)][string]$BaseLangId,
+        [Parameter(Mandatory)][string]$PayloadFile,
+        [Parameter(Mandatory)][string]$LayoutText,
+        [Parameter(Mandatory)][string]$ProjectLayoutId
+    )
+
+    $baseKlid = "0000$BaseLangId".ToLowerInvariant()
+    $keyPath = Join-Path $LayoutsKey $baseKlid
+    if (-not (Test-Path $keyPath)) {
+        New-Item -Path $LayoutsKey -Name $baseKlid -Force | Out-Null
+    }
+
+    $props = Get-ItemProperty $keyPath
+    foreach ($name in @('Layout File', 'Layout Text', 'Layout Display Name', 'Layout Id')) {
+        $backupName = "Keyremap Original $name"
+        if (-not (Get-ItemProperty $keyPath -Name $backupName -ErrorAction SilentlyContinue)) {
+            $value = $props.$name
+            if ($null -ne $value) {
+                Set-ItemProperty -Path $keyPath -Name $backupName -Value ([string]$value) -Type String
+            }
+        }
+    }
+
+    Set-ItemProperty -Path $keyPath -Name 'Layout File' -Value $PayloadFile -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Text' -Value $LayoutText -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Layout Display Name' -Value "@%SystemRoot%\system32\$PayloadFile,-1000" -Type ExpandString
+    Remove-ItemProperty -Path $keyPath -Name 'Layout Id' -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $keyPath -Name 'Layout Product Code' -Value $ProductCode -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Keyremap Layout Id' -Value $ProjectLayoutId -Type String
+    Set-ItemProperty -Path $keyPath -Name 'Keyremap Overrides Base KLID' -Value '1' -Type String
+    Write-Host "Overrode base KLID $baseKlid so Windows shell uses $LayoutText directly."
+    return $baseKlid
 }
 
 # --- Pick unused KLID + Layout Id ---------------------------------------------
@@ -593,24 +665,26 @@ function Install-OneLayout {
     Set-ItemProperty -Path $keyPath -Name 'Keyremap Layout Id' -Value $ProjectLayoutId -Type String
     Write-Host "Registered at $keyPath"
 
+    $visibleKlid = Set-BaseLayoutOverride -BaseLangId $BaseLangId -PayloadFile $payloadFile -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId
+
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
-        Remove-PreloadKlids -Klids @("0000$BaseLangId")
+        Remove-PreloadKlids -Klids @($klid)
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
         Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
         Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
-        Add-PreloadKlid -Klid $klid
-        $hklName = Get-HklNameForKlid -Klid $klid
-        Remove-CtfKeyboardSortOrder -VisibleKlid "0000$BaseLangId"
-        Remove-CtfLanguageSortOrder -VisibleKlid "0000$BaseLangId"
-        if ($hklName) { Set-CtfKeyboardSortOrder -VisibleKlid $klid -HklName $hklName }
-        Add-CtfLanguageSortOrder -VisibleKlid $klid
+        Add-PreloadKlid -Klid $visibleKlid
+        $visibleHklName = $visibleKlid
+        Remove-CtfKeyboardSortOrder -VisibleKlid $klid
+        Remove-CtfLanguageSortOrder -VisibleKlid $klid
+        Set-CtfKeyboardSortOrder -VisibleKlid $visibleKlid -HklName $visibleHklName
+        Add-CtfLanguageSortOrder -VisibleKlid $visibleKlid
         if ($LanguageTag) {
-            Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $klid
+            Set-UserLanguageTipExclusive -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $visibleKlid
             Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
             Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
-            if ($hklName) { Set-CtfKeyboardSortOrder -VisibleKlid $klid -HklName $hklName }
-            Add-CtfLanguageSortOrder -VisibleKlid $klid
+            Set-CtfKeyboardSortOrder -VisibleKlid $visibleKlid -HklName $visibleHklName
+            Add-CtfLanguageSortOrder -VisibleKlid $visibleKlid
         } else {
             Write-Warning "Could not derive a language profile for '$($Layout.id)' from LANGID $BaseLangId; not adding a modern user language profile."
         }
@@ -620,6 +694,7 @@ function Install-OneLayout {
 
     return [pscustomobject]@{
         Klid = $klid
+        VisibleKlid = $visibleKlid
         StaleHkls = @($staleHkls)
     }
 }
@@ -664,7 +739,7 @@ foreach ($id in $LayoutId) {
 }
 
 foreach ($installedLayout in $installedLayouts) {
-    $klid = [string]$installedLayout.Klid
+    $klid = if ($installedLayout.VisibleKlid) { [string]$installedLayout.VisibleKlid } else { [string]$installedLayout.Klid }
     try {
         $hkl = [KbdActivate]::LoadKeyboardLayout(
             $klid,
