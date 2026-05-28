@@ -458,21 +458,23 @@ LAYOUT_META = {
 def load_layout_meta(path: Optional[Path], layout: str, variant_name: str) -> Optional[Tuple[str, str, str, str, str]]:
     if not path:
         return None
-    items = json.loads(path.read_text(encoding="utf-8"))
-    wanted_id = f"{layout}-{variant_name}" if variant_name else layout
+    items = json.loads(path.read_text(encoding="utf-8-sig"))
+    manifest_variant = "" if variant_name in ("", "basic", "default") else variant_name
+    wanted_id = f"{layout}-{manifest_variant}" if manifest_variant else layout
     wanted_id = re.sub(r"[^a-z0-9]+", "-", wanted_id.lower()).strip("-")
     for item in items:
         item_layout = str(item.get("xkbLayout", ""))
         item_variant = str(item.get("xkbVariant", ""))
         item_id = str(item.get("id", ""))
-        if item_id != wanted_id and (item_layout, item_variant) != (layout, variant_name):
+        normalized_item_variant = "" if item_variant in ("", "basic", "default") else item_variant
+        if item_id != wanted_id and (item_layout, normalized_item_variant) != (layout, manifest_variant):
             continue
         base_langid = str(item.get("baseLangId", "")).lower()
         if not re.fullmatch(r"[0-9a-f]{4}", base_langid):
             raise ValueError(f"manifest entry {item_id or wanted_id!r} has invalid baseLangId")
         fallback = LAYOUT_META.get(layout)
         locale_name = str(item.get("languageTag", "") or item.get("localeName", "") or (fallback[2] if fallback else layout))
-        desc = str(item.get("windowsFamily", "") or item.get("displayName", "") or layout)
+        desc = str(item.get("displayName", "") or item.get("windowsFamily", "") or layout)
         langname = str(item.get("languageName", "") or locale_name)
         dll_name = str(item.get("dllName", "") or f"kbd{layout}.dll")
         kbd_name = Path(dll_name).stem[:8]
@@ -511,7 +513,7 @@ def emit_klc(
     meta = meta_override or LAYOUT_META.get(layout, (f"kbd{layout}", "00000000", f"{layout}", layout, layout))
     kbd_name, locale_id, locale_name, desc, langname = meta
     kbd_name = f"{kbd_name}{variant_name[:2]}"[:8] if variant_name != "basic" else kbd_name
-    desc_full = var.name_group1 or f"{desc} ({variant_name})"
+    desc_full = desc if meta_override else (var.name_group1 or f"{desc} ({variant_name})")
 
     # Map keys to Windows
     rows: List[str] = []
@@ -543,8 +545,9 @@ def emit_klc(
         vk_sep = "\t\t" if len(vk) <= 5 else "\t"
         rows.append(f"{sc}\t{vk}{vk_sep}{cap}\t{c0}\t\t{c1}\t\t{c2}\t\t{c6}\t\t{c7}")
 
-    # Space row (always present)
-    rows.append("39\tSPACE\t\t0\t0020\t\t0020\t\t-1\t\t0020\t\t0020")
+    # Space row (always present unless XKB explicitly supplied SPCE).
+    if "SPCE" not in var.keys:
+        rows.append("39\tSPACE\t\t0\t0020\t\t0020\t\t-1\t\t0020\t\t0020")
 
     # --- write the KLC ---
     out.append(f'KBD\t{kbd_name}\t"{desc_full}"\n')
@@ -705,12 +708,13 @@ def main() -> int:
     compose_paths = [args.compose] if args.compose else COMPOSE_PATHS
     compose = load_compose_deadkeys(compose_paths, keysyms, keysym_cps)
 
+    variant = "basic" if args.variant in ("", "default") else args.variant
     loader = XkbSymbolsLoader(args.symbols_dir, keysyms)
-    var = loader.resolve(args.layout, args.variant)
+    var = loader.resolve(args.layout, variant)
     meta_override = load_layout_meta(args.metadata_json, args.layout, args.variant)
 
     out_lines: List[str] = []
-    emit_klc(args.layout, args.variant, var, compose, out_lines, cps=keysym_cps, meta_override=meta_override)
+    emit_klc(args.layout, variant, var, compose, out_lines, cps=keysym_cps, meta_override=meta_override)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     # KLC files are UTF-16 LE with BOM on Windows, but kbdutool on MSYS accepts
     # UTF-8 too; the reference src/kbdisdv.klc is UTF-8 in this repo, so match.

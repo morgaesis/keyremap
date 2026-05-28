@@ -7,14 +7,22 @@
   Windows on ARM has both native ARM64 text hosts and x64-compatible text
   hosts. Keyboard layout DLLs are loaded into those hosts, so a single x64 or
   ARM64 DLL is not enough. This builds a pure ARM64X forwarder named
-  kbdisdv.dll that forwards KbdLayerDescriptor to sidecar DLLs:
+  <base>.dll that forwards KbdLayerDescriptor to sidecar DLLs:
 
-    kbdisdva.dll  ARM64 native layout
-    kbdisdvx.dll  x64 layout
+    <base>a.dll  ARM64 native layout
+    <base>x.dll  x64 layout
 #>
 
 [CmdletBinding()]
 param(
+    [string]$BaseName = 'kbdisdv',
+
+    [string]$DllName,
+
+    [string]$LayoutName,
+
+    [string]$KlcSrc,
+
     [string]$OutDir
 )
 
@@ -25,14 +33,15 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'build\arm64x' }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$x64Dll = Join-Path $RepoRoot 'build\x64\kbdisdv.dll'
-$arm64Dll = Join-Path $RepoRoot 'build\arm64\kbdisdv.dll'
-if (-not (Test-Path $x64Dll)) { & (Join-Path $PSScriptRoot 'build.ps1') -Arch x64 }
-if (-not (Test-Path $arm64Dll)) { & (Join-Path $PSScriptRoot 'build.ps1') -Arch arm64 }
+if (-not $DllName) { $DllName = "$BaseName.dll" }
+$x64Dll = Join-Path $RepoRoot "build\x64\$DllName"
+$arm64Dll = Join-Path $RepoRoot "build\arm64\$DllName"
+if (-not (Test-Path $x64Dll)) { & (Join-Path $PSScriptRoot 'build.ps1') -Arch x64 -BaseName $BaseName -DllName $DllName -KlcSrc $KlcSrc }
+if (-not (Test-Path $arm64Dll)) { & (Join-Path $PSScriptRoot 'build.ps1') -Arch arm64 -BaseName $BaseName -DllName $DllName -KlcSrc $KlcSrc }
 
-$base = 'kbdisdv'
-$armSide = 'kbdisdva'
-$x64Side = 'kbdisdvx'
+$base = [System.IO.Path]::GetFileNameWithoutExtension($DllName)
+$armSide = if ($base.Length -le 7) { "${base}a" } else { $base.Substring(0, 6) + 'aa' }
+$x64Side = if ($base.Length -le 7) { "${base}x" } else { $base.Substring(0, 6) + 'xx' }
 Copy-Item $arm64Dll (Join-Path $OutDir "$armSide.dll") -Force
 Copy-Item $x64Dll (Join-Path $OutDir "$x64Side.dll") -Force
 
@@ -47,13 +56,13 @@ EXPORTS
     KbdLayerDescriptor=$x64Side.KbdLayerDescriptor @1
 "@
 
-$layoutName = 'Icelandic Dvorak'
-$klcPath = Join-Path $RepoRoot 'src\kbdisdv.klc'
-if (Test-Path $klcPath) {
+if (-not $LayoutName) { $LayoutName = 'Icelandic Dvorak' }
+$klcPath = if ($KlcSrc) { $KlcSrc } else { Join-Path $RepoRoot "src\$BaseName.klc" }
+if (-not $LayoutName -and (Test-Path $klcPath)) {
     $klcText = Get-Content -Path $klcPath -Raw -Encoding UTF8
-    if ($klcText -match '(?m)^KBD\s+\S+\s+"([^"]+)"') { $layoutName = $matches[1] }
+    if ($klcText -match '(?m)^KBD\s+\S+\s+"([^"]+)"') { $LayoutName = $matches[1] }
 }
-$escapedLayoutName = $layoutName.Replace('"', '""')
+$escapedLayoutName = $LayoutName.Replace('"', '""')
 Set-Content -Path (Join-Path $OutDir "$base.rc") -Encoding Unicode -Value @"
 #include "winver.h"
 1 VERSIONINFO

@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Compile the Icelandic Dvorak keyboard layout DLL for a target architecture.
+  Compile a keyboard layout DLL for a target architecture.
 
 .DESCRIPTION
-  Takes generated\kbdisdv.{c,h,def,rc} and compiles it into a native
-  kbdisdv.dll via MSVC.
+  Takes generated\<base>.{c,h,def,rc} and compiles it into a native
+  keyboard layout DLL via MSVC.
 
 .PARAMETER Arch
   x86, x64, or arm64. Default: arm64.
@@ -19,6 +19,14 @@ param(
     [ValidateSet('x86', 'x64', 'arm64')]
     [string]$Arch = 'arm64',
 
+    [string]$BaseName = 'kbdisdv',
+
+    [string]$KlcSrc,
+
+    [string]$SrcDir,
+
+    [string]$DllName,
+
     [string]$OutDir
 )
 
@@ -27,13 +35,19 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
-$SrcDir = Join-Path $RepoRoot 'generated'
+if (-not $SrcDir) { $SrcDir = Join-Path $RepoRoot 'generated' }
+if (-not $DllName) { $DllName = "$BaseName.dll" }
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot "build\$Arch" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-if (-not (Test-Path (Join-Path $SrcDir 'kbdisdv.c'))) {
+if (-not (Test-Path (Join-Path $SrcDir "$BaseName.c"))) {
     Write-Host "generated not populated; running generate.ps1"
-    & (Join-Path $PSScriptRoot 'generate.ps1')
+    $generateArgs = @{
+        BaseName = $BaseName
+        GenRoot = $SrcDir
+    }
+    if ($KlcSrc) { $generateArgs.KlcSrc = $KlcSrc }
+    & (Join-Path $PSScriptRoot 'generate.ps1') @generateArgs
     if ($LASTEXITCODE -ne 0) { throw "generate.ps1 failed" }
 }
 
@@ -67,11 +81,11 @@ $vsArch = @{ 'x86' = 'x86'; 'x64' = 'amd64'; 'arm64' = 'arm64' }[$Arch]
 $machineName = @{ 'x86' = 'x86'; 'x64' = 'x64'; 'arm64' = 'ARM64' }[$Arch]
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'amd64' }
 
-$base = 'kbdisdv'
+$base = $BaseName
 $cSrc = Join-Path $SrcDir "$base.c"
 $rcSrc = Join-Path $SrcDir "$base.rc"
 $defSrc = Join-Path $SrcDir "$base.def"
-$outDll = Join-Path $OutDir 'kbdisdv.dll'
+$outDll = Join-Path $OutDir $DllName
 $resFile = Join-Path $OutDir "$base.res"
 $objFile = Join-Path $OutDir "$base.obj"
 $patchedRcSrc = Join-Path $OutDir "$base.patched.rc"
@@ -81,7 +95,7 @@ foreach ($path in @($cSrc, $rcSrc, $defSrc)) {
 }
 
 $layoutName = 'Icelandic Dvorak'
-$klcPath = Join-Path $RepoRoot "src\$base.klc"
+$klcPath = if ($KlcSrc) { $KlcSrc } else { Join-Path $RepoRoot "src\$base.klc" }
 if (Test-Path $klcPath) {
     $klcText = Get-Content -Path $klcPath -Raw -Encoding UTF8
     if ($klcText -match '(?m)^KBD\s+\S+\s+"([^"]+)"') { $layoutName = $matches[1] }
@@ -144,7 +158,7 @@ link.exe /nologo /DLL /NOENTRY /NODEFAULTLIB /SUBSYSTEM:NATIVE ^
 $bat = Join-Path $OutDir "_build-$base.bat"
 $buildCmd | Set-Content -Encoding ASCII -Path $bat
 
-Write-Host "Building kbdisdv.dll ($Arch)..."
+Write-Host "Building $DllName ($Arch)..."
 cmd.exe /c "`"$bat`""
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
 

@@ -163,12 +163,20 @@ $tableLines.Add("")
 $tableText = ($tableLines -join "`r`n")
 
 $c = Get-Content $CPath -Raw
-$insertBefore = 'static ALLOC_SECTION_LDATA VK_TO_WCHARS2 aVkToWch2\[\] = \{'
-if ($c -notmatch $insertBefore) { throw "Could not locate aVkToWch2 insertion point in $CPath" }
-$c = [regex]::Replace($c, $insertBefore, ($tableText + "`r`n" + 'static ALLOC_SECTION_LDATA VK_TO_WCHARS2 aVkToWch2[] = {'), 1)
+$existingTable = '(?ms)static ALLOC_SECTION_LDATA VK_TO_WCHARS5 aVkToWch5\[\]\s*=\s*\{.*?^\};'
+if ($c -match $existingTable) {
+    $rx = [regex]::new($existingTable)
+    $c = $rx.Replace($c, $tableText, 1)
+} else {
+    $insertBefore = 'static ALLOC_SECTION_LDATA VK_TO_WCHARS2 aVkToWch2\[\] = \{'
+    if ($c -notmatch $insertBefore) { throw "Could not locate aVkToWch2 insertion point in $CPath" }
+    $c = [regex]::Replace($c, $insertBefore, ($tableText + "`r`n" + 'static ALLOC_SECTION_LDATA VK_TO_WCHARS2 aVkToWch2[] = {'), 1)
+}
 
 $tableEntry = '    {  (PVK_TO_WCHARS1)aVkToWch5, 5, sizeof(aVkToWch5[0]) },'
-$c = $c -replace '(static ALLOC_SECTION_LDATA VK_TO_WCHAR_TABLE aVkToWcharTable\[\] = \{\s*)', "`$1$tableEntry`r`n"
+if ($c -notmatch '\(PVK_TO_WCHARS1\)aVkToWch5') {
+    $c = $c -replace '(static ALLOC_SECTION_LDATA VK_TO_WCHAR_TABLE aVkToWcharTable\[\] = \{\s*)', "`$1$tableEntry`r`n"
+}
 
 Set-Content -Path $CPath -Value $c -Encoding ASCII -NoNewline
 
