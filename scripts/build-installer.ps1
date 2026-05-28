@@ -31,6 +31,7 @@ foreach ($arch in @('x86', 'x64', 'arm64')) {
         if ($LASTEXITCODE -ne 0) { throw "build.ps1 failed for $arch" }
     }
 }
+& (Join-Path $PSScriptRoot 'build-arm64x-forwarder.ps1') | Out-Host
 
 & (Join-Path $PSScriptRoot 'export-installer-layouts.ps1')
 

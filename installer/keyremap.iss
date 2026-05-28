@@ -29,9 +29,10 @@ Source: "..\data\layouts.json"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "layouts.ini"; Flags: dontcopy
 Source: "..\build\x86\kbdisdv.dll"; DestDir: "{app}\build\x86"; Flags: ignoreversion
 Source: "..\build\x64\kbdisdv.dll"; DestDir: "{app}\build\x64"; Flags: ignoreversion
-; Windows ARM currently uses x64-compatible keyboard DLLs. Plain ARM64 layout
-; DLLs fail in x64-compatible text hosts, and pure ARM64X forwarders load but
-; do not produce characters through ToUnicodeEx.
+Source: "..\build\arm64\kbdisdv.dll"; DestDir: "{app}\build\arm64"; Flags: ignoreversion
+Source: "..\build\arm64x\kbdisdv.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
+Source: "..\build\arm64x\kbdisdva.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
+Source: "..\build\arm64x\kbdisdvx.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -ManifestPath ""{app}\data\layouts.json"" -SelectionFile ""{tmp}\keyremap-selected-layouts.txt"" -Force"; StatusMsg: "Installing selected keyboard layouts..."; Flags: runhidden waituntilterminated

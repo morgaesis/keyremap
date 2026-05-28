@@ -60,9 +60,9 @@ $osArch = try {
 }
 $arch = switch -Regex ($osArch) {
     'ARM\s*64|Arm64' {
-        # Plain ARM64 keyboard DLLs cannot be loaded by x64-compatible hosts.
-        # Until ARM64EC/ARM64X builds are produced, prefer x64 on Windows ARM.
-        'x64'
+        # Use an ARM64X forwarder so both ARM64-native and x64-compatible text
+        # hosts can load the keyboard layout.
+        'arm64x'
         break
     }
     '64|X64' { 'x64'; break }
@@ -638,6 +638,15 @@ function Install-OneLayout {
     $dest = Join-Path $System32 $payloadFile
     Write-Host "Copying $sourceDll -> $dest"
     Copy-Item -Path $sourceDll -Destination $dest -Force
+    if ($arch -eq 'arm64x') {
+        foreach ($sidecar in @('kbdisdva.dll', 'kbdisdvx.dll')) {
+            $sidecarSource = Join-Path $RepoRoot "build\arm64x\$sidecar"
+            if (-not (Test-Path $sidecarSource)) { throw "ARM64X sidecar missing: $sidecarSource" }
+            $sidecarDest = Join-Path $System32 $sidecar
+            Write-Host "Copying $sidecarSource -> $sidecarDest"
+            Copy-Item -Path $sidecarSource -Destination $sidecarDest -Force
+        }
+    }
 
     $staleEntries = @($existing | Where-Object { $_.PSChildName -ne $klid })
     if ($staleEntries.Count -gt 0) {

@@ -57,9 +57,27 @@ foreach ($entry in $entries) {
         $lf = (Get-ItemProperty $entry.PSPath).'Layout File'
         if ($lf) { $removedDlls.Add([string]$lf) }
     } catch { }
-    Write-Host "Removing HKLM key: $($entry.PSChildName)"
     $removedKlids += $entry.PSChildName
-    Remove-Item -Path $entry.PSPath -Recurse -Force
+    $props = Get-ItemProperty $entry.PSPath
+    if ($props.'Keyremap Overrides Base KLID' -eq '1') {
+        Write-Host "Restoring base HKLM key: $($entry.PSChildName)"
+        foreach ($name in @('Layout File', 'Layout Text', 'Layout Display Name', 'Layout Id')) {
+            $backupName = "Keyremap Original $name"
+            $backup = $props.$backupName
+            if ($null -ne $backup -and [string]$backup -ne '') {
+                Set-ItemProperty -Path $entry.PSPath -Name $name -Value ([string]$backup) -Type String
+            } else {
+                Remove-ItemProperty -Path $entry.PSPath -Name $name -ErrorAction SilentlyContinue
+            }
+            Remove-ItemProperty -Path $entry.PSPath -Name $backupName -ErrorAction SilentlyContinue
+        }
+        foreach ($name in @('Layout Product Code', 'Keyremap Layout Id', 'Keyremap Overrides Base KLID')) {
+            Remove-ItemProperty -Path $entry.PSPath -Name $name -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Host "Removing HKLM key: $($entry.PSChildName)"
+        Remove-Item -Path $entry.PSPath -Recurse -Force
+    }
 }
 
 # Remove HKCU preload entries that pointed at removed KLIDs
@@ -121,6 +139,18 @@ public static class W32Delay {
 '@ -ErrorAction SilentlyContinue
 
 foreach ($dllName in @($targetDlls + $removedDlls | Where-Object { $_ } | Select-Object -Unique)) {
+    $path = Join-Path $System32 $dllName
+    if (-not (Test-Path $path)) { continue }
+    try {
+        Remove-Item $path -Force
+        Write-Host "Removed $path"
+    } catch {
+        Write-Warning "Cannot delete $path (likely loaded). Scheduling for reboot."
+        [void][W32Delay]::MoveFileEx($path, $null, [W32Delay]::MOVEFILE_DELAY_UNTIL_REBOOT)
+    }
+}
+
+foreach ($dllName in @('kbdisdva.dll', 'kbdisdvx.dll')) {
     $path = Join-Path $System32 $dllName
     if (-not (Test-Path $path)) { continue }
     try {

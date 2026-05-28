@@ -19,7 +19,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$DllPath,
-    [Parameter(Mandatory)][ValidateSet('x86', 'x64', 'arm64')][string]$ExpectedArch
+    [Parameter(Mandatory)][ValidateSet('x86', 'x64', 'arm64', 'arm64x')][string]$ExpectedArch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +53,7 @@ $expectedMachine = @{
     'x86'   = 0x014C  # IMAGE_FILE_MACHINE_I386
     'x64'   = 0x8664  # IMAGE_FILE_MACHINE_AMD64
     'arm64' = 0xAA64  # IMAGE_FILE_MACHINE_ARM64
+    'arm64x' = 0xAA64 # IMAGE_FILE_MACHINE_ARM64 plus ARM64X metadata
 }[$ExpectedArch]
 
 if ($machine -ne $expectedMachine) {

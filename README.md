@@ -59,6 +59,7 @@ Build:
 ```powershell
 .\scripts\build.ps1 -Arch x64
 .\scripts\build.ps1 -Arch arm64
+.\scripts\build-arm64x-forwarder.ps1
 ```
 
 Output:
@@ -158,6 +159,6 @@ DLLs and can be selected for installation. Layouts marked `[not built yet]` are
 visible so the full Linux target set is clear, but they are disabled until the
 bulk generator/build pipeline has produced verified DLLs for them.
 
-On Windows 11 ARM, plain ARM64 keyboard DLLs are not enough for x64-compatible
-text hosts. Until ARM64EC/ARM64X keyboard DLLs are produced, the installer uses
-the x64-compatible payload on ARM systems.
+On Windows 11 ARM, the installer uses an ARM64X forwarder plus ARM64 and x64
+sidecar DLLs. Native ARM64 text hosts such as `TextInputHost.exe` and
+x64-compatible desktop apps both need a loadable keyboard DLL.
