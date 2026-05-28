@@ -12,14 +12,16 @@ $outPath = Join-Path $RepoRoot 'installer\layouts.ini'
 
 $packaged = @{}
 if (Test-Path $manifestPath) {
-    foreach ($item in (Get-Content $manifestPath -Raw | ConvertFrom-Json)) {
+    $manifestJson = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    foreach ($item in @($manifestJson | ForEach-Object { $_ })) {
         $packaged[$item.id] = $item
     }
 }
 
 $rows = New-Object System.Collections.Generic.List[object]
 if (Test-Path $candidatePath) {
-    foreach ($candidate in (Get-Content $candidatePath -Raw | ConvertFrom-Json)) {
+    $candidateJson = Get-Content $candidatePath -Raw | ConvertFrom-Json
+    foreach ($candidate in @($candidateJson | ForEach-Object { $_ })) {
         $layout = [string]$candidate.xkb.layout
         $variant = [string]$candidate.xkb.variant
         $id = if ($variant) { "$layout-$variant" } else { $layout }
@@ -62,5 +64,6 @@ for ($i = 0; $i -lt $rows.Count; $i++) {
     $lines.Add("Packaged$n=$([int][bool]$row.Packaged)")
     $lines.Add("Dll$n=$($row.InstalledDll)")
 }
-$lines | Set-Content -Encoding UTF8 $outPath
+$text = (($lines | ForEach-Object { [string]$_ }) -join "`n") + "`n"
+[IO.File]::WriteAllText($outPath, $text, [Text.UTF8Encoding]::new($false))
 Write-Host "Wrote $outPath"

@@ -27,12 +27,10 @@ Source: "..\scripts\install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\uninstall.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\data\layouts.json"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "layouts.ini"; Flags: dontcopy
-Source: "..\build\x86\kbdisdv.dll"; DestDir: "{app}\build\x86"; Flags: ignoreversion
-Source: "..\build\x64\kbdisdv.dll"; DestDir: "{app}\build\x64"; Flags: ignoreversion
-Source: "..\build\arm64\kbdisdv.dll"; DestDir: "{app}\build\arm64"; Flags: ignoreversion
-Source: "..\build\arm64x\kbdisdv.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
-Source: "..\build\arm64x\kbdisdva.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
-Source: "..\build\arm64x\kbdisdvx.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
+Source: "..\build\x86\*.dll"; DestDir: "{app}\build\x86"; Flags: ignoreversion
+Source: "..\build\x64\*.dll"; DestDir: "{app}\build\x64"; Flags: ignoreversion
+Source: "..\build\arm64\*.dll"; DestDir: "{app}\build\arm64"; Flags: ignoreversion
+Source: "..\build\arm64x\*.dll"; DestDir: "{app}\build\arm64x"; Flags: ignoreversion
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -ManifestPath ""{app}\data\layouts.json"" -SelectionFile ""{tmp}\keyremap-selected-layouts.txt"" -Force"; StatusMsg: "Installing selected keyboard layouts..."; Flags: runhidden waituntilterminated

@@ -46,12 +46,19 @@ if ($SelectionFile) {
     if (-not (Test-Path $SelectionFile)) { throw "Selection file not found: $SelectionFile" }
     $LayoutId += @(Get-Content $SelectionFile | Where-Object { $_ -and $_.Trim() })
 }
-if (-not $LayoutId -or $LayoutId.Count -eq 0) { $LayoutId = @('is-dvorak') }
-$LayoutId = @($LayoutId | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+$installAllPackaged = (-not $LayoutId -or $LayoutId.Count -eq 0)
+if (-not $installAllPackaged) {
+    $LayoutId = @($LayoutId | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+}
 
-$manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+$manifestJson = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+$manifest = @($manifestJson | ForEach-Object { $_ })
 $layoutsById = @{}
 foreach ($layout in $manifest) { $layoutsById[[string]$layout.id] = $layout }
+if ($installAllPackaged) {
+    $LayoutId = @($manifest | Where-Object { [bool]$_.packaged } | ForEach-Object { [string]$_.id } | Select-Object -Unique)
+}
+if (-not $LayoutId -or $LayoutId.Count -eq 0) { throw "No packaged layouts selected from $ManifestPath" }
 
 $osArch = try {
     (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).OSArchitecture
@@ -88,10 +95,21 @@ function Get-LayoutPayloadName {
     return ('{0}{1}.dll' -f $prefix, $hash.Substring(0, 8 - $prefix.Length))
 }
 
+function Get-Arm64XSidecarNames {
+    param([Parameter(Mandatory)][string]$DllName)
+
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($DllName)
+    $armSide = if ($base.Length -le 7) { "${base}a" } else { $base.Substring(0, 6) + 'aa' }
+    $x64Side = if ($base.Length -le 7) { "${base}x" } else { $base.Substring(0, 6) + 'xx' }
+    return @("$armSide.dll", "$x64Side.dll")
+}
+
 function Get-LayoutHashHighWord {
     param([Parameter(Mandatory)][string]$SourceDll)
 
-    return 1
+    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $seed = [Convert]::ToInt32($hash.Substring(0, 3), 16)
+    return 1 + ($seed % 0x0fff)
 }
 
 function Get-LayoutHashLayoutId {
@@ -580,6 +598,7 @@ function Install-OneLayout {
     $LayoutText = [string]$Layout.displayName
     $BaseLangId = [string]$Layout.baseLangId
     $LanguageTag = [string]$Layout.languageTag
+    $OverrideBaseKlid = [bool]$Layout.overrideBaseKlid
     if (-not $LayoutFile -or -not $LayoutText -or -not $BaseLangId) {
         throw "Manifest entry '$($Layout.id)' is missing dllName/displayName/baseLangId"
     }
@@ -639,7 +658,7 @@ function Install-OneLayout {
     Write-Host "Copying $sourceDll -> $dest"
     Copy-Item -Path $sourceDll -Destination $dest -Force
     if ($arch -eq 'arm64x') {
-        foreach ($sidecar in @('kbdisdva.dll', 'kbdisdvx.dll')) {
+        foreach ($sidecar in (Get-Arm64XSidecarNames -DllName $LayoutFile)) {
             $sidecarSource = Join-Path $RepoRoot "build\arm64x\$sidecar"
             if (-not (Test-Path $sidecarSource)) { throw "ARM64X sidecar missing: $sidecarSource" }
             $sidecarDest = Join-Path $System32 $sidecar
@@ -674,24 +693,35 @@ function Install-OneLayout {
     Set-ItemProperty -Path $keyPath -Name 'Keyremap Layout Id' -Value $ProjectLayoutId -Type String
     Write-Host "Registered at $keyPath"
 
-    $visibleKlid = Set-BaseLayoutOverride -BaseLangId $BaseLangId -PayloadFile $payloadFile -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId
+    $visibleKlid = if ($OverrideBaseKlid) {
+        Set-BaseLayoutOverride -BaseLangId $BaseLangId -PayloadFile $payloadFile -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId
+    } else {
+        $klid
+    }
 
     if ($AddToCurrentUser) {
         Remove-PreloadKlids -Klids $staleKlids
-        Remove-PreloadKlids -Klids @($klid)
+        if ($OverrideBaseKlid) { Remove-PreloadKlids -Klids @($klid) }
         Remove-StaleUserLanguageTips -BaseLangId $BaseLangId -StaleKlids $staleKlids
-        Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
-        Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+        if ($OverrideBaseKlid) {
+            Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
+            Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+        }
         Add-PreloadKlid -Klid $visibleKlid
-        $visibleHklName = $visibleKlid
+        $visibleHklName = if ($OverrideBaseKlid) { $visibleKlid } else { Get-HklNameForKlid -Klid $visibleKlid }
+        if (-not $visibleHklName) { $visibleHklName = $visibleKlid }
         Remove-CtfKeyboardSortOrder -VisibleKlid $klid
         Remove-CtfLanguageSortOrder -VisibleKlid $klid
         Set-CtfKeyboardSortOrder -VisibleKlid $visibleKlid -HklName $visibleHklName
         Add-CtfLanguageSortOrder -VisibleKlid $visibleKlid
         if ($LanguageTag) {
-            Set-UserLanguageTipExclusive -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $visibleKlid
-            Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
-            Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+            if ($OverrideBaseKlid) {
+                Set-UserLanguageTipExclusive -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $visibleKlid
+                Remove-ProjectSubstitutes -BaseLangId $BaseLangId -AllowedKlids @($klid) -StaleKlids $staleKlids
+                Remove-BaseLanguageSubstitute -BaseLangId $BaseLangId
+            } else {
+                Add-UserLanguageTip -LanguageTag $LanguageTag -BaseLangId $BaseLangId -Klid $visibleKlid
+            }
             Set-CtfKeyboardSortOrder -VisibleKlid $visibleKlid -HklName $visibleHklName
             Add-CtfLanguageSortOrder -VisibleKlid $visibleKlid
         } else {

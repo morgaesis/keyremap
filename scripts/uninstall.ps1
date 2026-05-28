@@ -24,7 +24,8 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ManifestPath) { $ManifestPath = Join-Path $RepoRoot 'data\layouts.json' }
 
 if (Test-Path $ManifestPath) {
-    $manifest = @(Get-Content $ManifestPath -Raw | ConvertFrom-Json)
+    $manifestJson = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+    $manifest = @($manifestJson | ForEach-Object { $_ })
     $targetDlls = @($manifest | ForEach-Object { [string]$_.dllName } | Where-Object { $_ } | Select-Object -Unique)
     $targetTexts = @($manifest | ForEach-Object { [string]$_.displayName } | Where-Object { $_ } | Select-Object -Unique)
 } else {
@@ -32,6 +33,17 @@ if (Test-Path $ManifestPath) {
     $targetDlls = @()
     $targetTexts = @()
 }
+
+function Get-Arm64XSidecarNames {
+    param([Parameter(Mandatory)][string]$DllName)
+
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($DllName)
+    $armSide = if ($base.Length -le 7) { "${base}a" } else { $base.Substring(0, 6) + 'aa' }
+    $x64Side = if ($base.Length -le 7) { "${base}x" } else { $base.Substring(0, 6) + 'xx' }
+    return @("$armSide.dll", "$x64Side.dll")
+}
+
+$targetSidecars = @($targetDlls | ForEach-Object { Get-Arm64XSidecarNames -DllName $_ } | Select-Object -Unique)
 
 Write-Host "Uninstalling keyremap layouts"
 
@@ -150,7 +162,7 @@ foreach ($dllName in @($targetDlls + $removedDlls | Where-Object { $_ } | Select
     }
 }
 
-foreach ($dllName in @('kbdisdva.dll', 'kbdisdvx.dll')) {
+foreach ($dllName in $targetSidecars) {
     $path = Join-Path $System32 $dllName
     if (-not (Test-Path $path)) { continue }
     try {

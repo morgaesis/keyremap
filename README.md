@@ -20,8 +20,8 @@ HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\<KLID>
 ```
 
 with values such as `Layout File` and `Layout Text`. The installer in this
-repo registers `kbdisdv.dll` there, adds it to the current user's preload list,
-and calls `LoadKeyboardLayoutW`.
+repo registers the selected layout DLLs there, adds them to the current user's
+language/input list, and calls `LoadKeyboardLayoutW`.
 
 MSKLC's GUI and generated installer are not the dependable part of the stack,
 especially on Windows 11 ARM64. This repo only uses MSKLC's `kbdutool.exe` to
@@ -34,8 +34,12 @@ modern compiler.
 shows the broader Linux/Windows candidate catalog generated from
 xkeyboard-config, including layouts not built yet.
 
-The first packaged layout is `is-dvorak`. `src\kbdisdv.klc` is its source of
-truth. It is a Windows KLC port of xkeyboard-config `is(dvorak)`:
+The packaged set currently covers the Dvorak-family XKB variants whose Windows
+language family exists locally but whose layout variant is not covered by a
+Windows built-in. The generated manifest is `data\layouts.json`.
+
+`is-dvorak` remains the hand-verified reference layout. `src\kbdisdv.klc` is
+its source of truth. It is a Windows KLC port of xkeyboard-config `is(dvorak)`:
 
 - base: `us(dvorak)`
 - overlay: `eurosign(4)`
@@ -57,15 +61,19 @@ Prerequisites:
 Build:
 
 ```powershell
+.\tools\update-layout-manifest.ps1
 .\scripts\build.ps1 -Arch x64
 .\scripts\build.ps1 -Arch arm64
 .\scripts\build-arm64x-forwarder.ps1
+.\scripts\build-installer.ps1
 ```
 
 Output:
 
 ```text
-build\<arch>\kbdisdv.dll
+build\<arch>\<layout>.dll
+build\arm64x\<layout>.dll
+installer\Output\keyremap-setup.exe
 ```
 
 The build script verifies the PE machine type and `KbdLayerDescriptor` export.
@@ -91,10 +99,11 @@ For script-based local development, open PowerShell as Administrator:
 .\scripts\install.ps1
 ```
 
-To install a specific DLL:
+With no layout IDs, the script installs every packaged layout in
+`data\layouts.json`. To install one or more specific layouts:
 
 ```powershell
-.\scripts\install.ps1 -DllPath .\build\arm64\kbdisdv.dll
+.\scripts\install.ps1 -LayoutId is-dvorak,dk-dvorak
 ```
 
 Uninstall:
@@ -157,7 +166,14 @@ safe to auto-ship as KLC DLLs without inspection.
 The GUI installer displays this catalog. Layouts marked `[ready]` have packaged
 DLLs and can be selected for installation. Layouts marked `[not built yet]` are
 visible so the full Linux target set is clear, but they are disabled until the
-bulk generator/build pipeline has produced verified DLLs for them.
+generator/build pipeline has produced verified DLLs for them.
+
+The current packaging rule is implemented in
+`tools\update-layout-manifest.ps1`: stable IDs come from `xkb layout + variant`,
+DLL names are stable `kx<sha1-prefix>.dll` names with <=8-character stems, and
+only verified Dvorak-family gaps are marked installable by default. Use
+`-AllMissing` to draft a manifest for every candidate missing variant; those
+entries still need converter/build/render review before shipping.
 
 On Windows 11 ARM, the installer uses an ARM64X forwarder plus ARM64 and x64
 sidecar DLLs. Native ARM64 text hosts such as `TextInputHost.exe` and
