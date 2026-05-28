@@ -87,12 +87,12 @@ function Get-LayoutPayloadName {
         [Parameter(Mandatory)][string]$OriginalDllName
     )
 
-    $hash = (Get-FileHash -LiteralPath $SourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
-    $prefix = [System.IO.Path]::GetFileNameWithoutExtension($OriginalDllName).ToLowerInvariant()
-    $prefix = ($prefix -replace '[^a-z0-9]', '')
-    if ($prefix.Length -gt 3) { $prefix = $prefix.Substring(0, 3) }
-    if ($prefix.Length -eq 0) { $prefix = 'kbd' }
-    return ('{0}{1}.dll' -f $prefix, $hash.Substring(0, 8 - $prefix.Length))
+    if (-not (Test-Path -LiteralPath $SourceDll)) { throw "DLL not found: $SourceDll" }
+    $name = [System.IO.Path]::GetFileName($OriginalDllName)
+    if (-not $name -or -not $name.EndsWith('.dll', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Invalid keyboard layout DLL name in manifest: $OriginalDllName"
+    }
+    return $name.ToLowerInvariant()
 }
 
 function Get-Arm64XSidecarNames {
@@ -604,21 +604,32 @@ function Install-OneLayout {
     }
     if (-not $LanguageTag) { $LanguageTag = Resolve-LanguageTag -BaseLangId $BaseLangId }
 
+    $runtimeLayoutFile = if ($arch -eq 'arm64x') {
+        # Windows accepts the x64-compatible sidecar as a keyboard Layout File
+        # in x64 text hosts. A pure ARM64X forwarder can be LoadLibrary'd, but
+        # LoadKeyboardLayout rejects it on current Windows 11 ARM builds.
+        (Get-Arm64XSidecarNames -DllName $LayoutFile)[1]
+    } else {
+        $LayoutFile
+    }
+
     $sourceDll = if ($DllPath -and $LayoutId.Count -eq 1) {
         $DllPath
     } else {
-        Join-Path $RepoRoot "build\$arch\$LayoutFile"
+        Join-Path $RepoRoot "build\$arch\$runtimeLayoutFile"
     }
     if (-not (Test-Path $sourceDll)) {
         throw "DLL not found for '$($Layout.id)' at $sourceDll. This layout is listed but not packaged for $arch yet."
     }
 
-    $payloadFile = Get-LayoutPayloadName -SourceDll $sourceDll -OriginalDllName $LayoutFile
+    $payloadFile = Get-LayoutPayloadName -SourceDll $sourceDll -OriginalDllName $runtimeLayoutFile
     $preferredHighWord = Get-LayoutHashHighWord -SourceDll $sourceDll
     $preferredLayoutId = Get-LayoutHashLayoutId -SourceDll $sourceDll
     $preferredLayoutIdHex = ('{0:x4}' -f $preferredLayoutId)
     $preferredKlid = ('{0:x4}{1}' -f $preferredHighWord, $BaseLangId)
-    $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId -LayoutFiles @($LayoutFile, $payloadFile))
+    $knownLayoutFiles = @($LayoutFile, $payloadFile)
+    if ($arch -eq 'arm64x') { $knownLayoutFiles += Get-Arm64XSidecarNames -DllName $LayoutFile }
+    $existing = @(Get-InstalledLayoutEntries -LayoutText $LayoutText -ProjectLayoutId $ProjectLayoutId -LayoutFiles $knownLayoutFiles)
     $matchingPayload = @($existing | Where-Object {
         try { (Get-ItemProperty $_.PSPath).'Layout File' -eq $payloadFile } catch { $false }
     } | Select-Object -First 1)
@@ -658,10 +669,17 @@ function Install-OneLayout {
     Write-Host "Copying $sourceDll -> $dest"
     Copy-Item -Path $sourceDll -Destination $dest -Force
     if ($arch -eq 'arm64x') {
+        $forwarderSource = Join-Path $RepoRoot "build\arm64x\$LayoutFile"
+        if (Test-Path $forwarderSource) {
+            $forwarderDest = Join-Path $System32 $LayoutFile
+            Write-Host "Copying $forwarderSource -> $forwarderDest"
+            Copy-Item -Path $forwarderSource -Destination $forwarderDest -Force
+        }
         foreach ($sidecar in (Get-Arm64XSidecarNames -DllName $LayoutFile)) {
             $sidecarSource = Join-Path $RepoRoot "build\arm64x\$sidecar"
             if (-not (Test-Path $sidecarSource)) { throw "ARM64X sidecar missing: $sidecarSource" }
             $sidecarDest = Join-Path $System32 $sidecar
+            if ($sidecarDest.Equals($dest, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
             Write-Host "Copying $sidecarSource -> $sidecarDest"
             Copy-Item -Path $sidecarSource -Destination $sidecarDest -Force
         }

@@ -175,6 +175,8 @@ only verified Dvorak-family gaps are marked installable by default. Use
 `-AllMissing` to draft a manifest for every candidate missing variant; those
 entries still need converter/build/render review before shipping.
 
-On Windows 11 ARM, the installer uses an ARM64X forwarder plus ARM64 and x64
-sidecar DLLs. Native ARM64 text hosts such as `TextInputHost.exe` and
-x64-compatible desktop apps both need a loadable keyboard DLL.
+On Windows 11 ARM, the build produces an ARM64X forwarder plus ARM64 and x64
+sidecar DLLs. Current Windows 11 ARM builds can `LoadLibrary` the pure ARM64X
+forwarder, but `LoadKeyboardLayout` rejects it as the active keyboard layout
+file. The installer therefore registers the x64-compatible sidecar as the
+visible `Layout File` and still copies the ARM64/ARM64X companions beside it.

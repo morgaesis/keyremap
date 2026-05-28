@@ -108,10 +108,13 @@ $cmd = @"
 @echo on
 call "$vsDevCmd" -arch=arm64 -host_arch=$hostArch -no_logo || exit /b 1
 cd /d "$OutDir" || exit /b 2
-link /lib /machine:x64 /def:$x64Side.def /out:$x64Side.lib || exit /b 3
-link /lib /machine:arm64 /def:$armSide.def /out:$armSide.lib || exit /b 4
-rc /nologo /fo $base.res $base.rc || exit /b 5
-link /dll /noentry /subsystem:native /machine:arm64x /defArm64Native:$armSide.def /def:$x64Side.def $base.res /out:$base.dll || exit /b 6
+type nul > empty.cpp || exit /b 3
+cl /nologo /c /Foempty_arm64.obj empty.cpp || exit /b 4
+cl /nologo /c /arm64EC /Foempty_x64.obj empty.cpp || exit /b 5
+link /lib /machine:x64 /def:$x64Side.def /out:$x64Side.lib || exit /b 6
+link /lib /machine:arm64 /def:$armSide.def /out:$armSide.lib || exit /b 7
+rc /nologo /fo $base.res $base.rc || exit /b 8
+link /dll /noentry /subsystem:native /machine:arm64x /defArm64Native:$armSide.def /def:$x64Side.def empty_arm64.obj empty_x64.obj $armSide.lib $x64Side.lib $base.res /out:$base.dll || exit /b 9
 "@
 
 $bat = Join-Path $OutDir "_build-$base-arm64x.bat"
