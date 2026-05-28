@@ -15,6 +15,14 @@
 .PARAMETER HtmlPath
   Optional path for an HTML keyboard render.
 
+.PARAMETER ExpectedLayoutName
+  Optional expected display/layout name resolved from the Windows registry.
+
+.PARAMETER ExpectedChars
+  Optional scan-code expectations to assert when AssertIcelandicDvorak is set.
+  Each item should provide Scan plus one or more of Normal, Shift, AltGr, and
+  ShiftAltGr. Defaults to the current is(dvorak) expectations.
+
 .PARAMETER AssertIcelandicDvorak
   Assert the known xkeyboard-config is(dvorak) AltGr outputs.
 #>
@@ -24,6 +32,7 @@ param(
     [string]$Klid = '0001040f',
     [string]$HtmlPath,
     [string]$ExpectedLayoutName,
+    [object[]]$ExpectedChars,
     [switch]$AssertIcelandicDvorak
 )
 
@@ -122,6 +131,32 @@ function Escape-Html {
     param([AllowNull()][string]$Text)
     if ($null -eq $Text) { return '' }
     return [System.Net.WebUtility]::HtmlEncode($Text)
+}
+
+function Test-ExpectedProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object.Contains($Name)
+    }
+
+    return $null -ne ($Object.PSObject.Properties[$Name])
+}
+
+function Get-ExpectedProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        return $Object[$Name]
+    }
+
+    return $Object.$Name
 }
 
 $hkl = [LiveKeyboardLayout]::LoadKeyboardLayout($Klid, 0x00000080) # KLF_NOTELLSHELL, process-local load
@@ -228,22 +263,26 @@ $allKeys |
     Format-Table -AutoSize
 
 if ($AssertIcelandicDvorak) {
-    $expected = @(
-        @{ Scan = '0x05'; Normal = '4'; AltGr = [string][char]0x20AC },
-        @{ Scan = '0x1F'; Normal = 'o'; Shift = 'O'; AltGr = [string][char]0x00F6; ShiftAltGr = [string][char]0x00D6 },
-        @{ Scan = '0x23'; Normal = 'd'; Shift = 'D'; AltGr = [string][char]0x00F0; ShiftAltGr = [string][char]0x00D0 },
-        @{ Scan = '0x27'; Normal = 's'; Shift = 'S'; AltGr = [string][char]0x00E6; ShiftAltGr = [string][char]0x00C6 },
-        @{ Scan = '0x31'; Normal = 'b'; Shift = 'B'; AltGr = [string][char]0x00DF; ShiftAltGr = [string][char]0x1E9E },
-        @{ Scan = '0x35'; Normal = 'z'; Shift = 'Z'; AltGr = [string][char]0x00FE; ShiftAltGr = [string][char]0x00DE }
-    )
+    if (-not $ExpectedChars) {
+        $ExpectedChars = @(
+            @{ Scan = '0x05'; Normal = '4'; AltGr = [string][char]0x20AC },
+            @{ Scan = '0x1F'; Normal = 'o'; Shift = 'O'; AltGr = [string][char]0x00F6; ShiftAltGr = [string][char]0x00D6 },
+            @{ Scan = '0x23'; Normal = 'd'; Shift = 'D'; AltGr = [string][char]0x00F0; ShiftAltGr = [string][char]0x00D0 },
+            @{ Scan = '0x27'; Normal = 's'; Shift = 'S'; AltGr = [string][char]0x00E6; ShiftAltGr = [string][char]0x00C6 },
+            @{ Scan = '0x31'; Normal = 'b'; Shift = 'B'; AltGr = [string][char]0x00DF; ShiftAltGr = [string][char]0x1E9E },
+            @{ Scan = '0x35'; Normal = 'z'; Shift = 'Z'; AltGr = [string][char]0x00FE; ShiftAltGr = [string][char]0x00DE }
+        )
+    }
 
-    foreach ($case in $expected) {
-        $actual = $allKeys | Where-Object { $_.Scan -eq $case.Scan } | Select-Object -First 1
-        if (-not $actual) { throw "Missing rendered scan code $($case.Scan)" }
+    foreach ($case in $ExpectedChars) {
+        $scan = Get-ExpectedProperty -Object $case -Name 'Scan'
+        $actual = $allKeys | Where-Object { $_.Scan -eq $scan } | Select-Object -First 1
+        if (-not $actual) { throw "Missing rendered scan code $scan" }
         foreach ($state in @('Normal', 'Shift', 'AltGr', 'ShiftAltGr')) {
-            if (-not $case.ContainsKey($state)) { continue }
-            if ($actual.$state.Text -ne $case[$state]) {
-                throw "$($case.Scan) $state expected '$($case[$state])' but got '$($actual.$state.Text)' ($($actual.$state.Codepoints))"
+            if (-not (Test-ExpectedProperty -Object $case -Name $state)) { continue }
+            $expected = Get-ExpectedProperty -Object $case -Name $state
+            if ($actual.$state.Text -ne $expected) {
+                throw "$scan $state expected '$expected' but got '$($actual.$state.Text)' ($($actual.$state.Codepoints))"
             }
         }
     }

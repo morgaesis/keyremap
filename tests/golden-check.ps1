@@ -19,6 +19,20 @@
 .PARAMETER DllPath
   Path to the kbdisdv.dll to test.
 
+.PARAMETER GoldenFile
+  Optional golden JSON file path. Defaults to tests\golden\is-dvorak.json.
+
+.PARAMETER MustHaveDeadKeys
+  Optional dead-key sequence keys that must be present. Defaults to the current
+  is(dvorak) coverage.
+
+.PARAMETER ExpectedDeadKeyOutputs
+  Optional map of dead-key sequence keys to expected composed codepoints.
+  Defaults to the current is(dvorak) acute accent checks.
+
+.PARAMETER RequireAltGr
+  Whether the KLLF_ALTGR flag must be set. Defaults to true.
+
 .PARAMETER UpdateGolden
   Regenerate tests\golden\is-dvorak.json from the current DLL output.
   Use only when you have intentionally changed the layout and verified
@@ -28,6 +42,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$DllPath,
+    [string]$GoldenFile,
+    [string[]]$MustHaveDeadKeys,
+    [object]$ExpectedDeadKeyOutputs,
+    [bool]$RequireAltGr = $true,
     [switch]$UpdateGolden
 )
 
@@ -36,7 +54,32 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $DllPath)) { throw "DLL not found: $DllPath" }
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$GoldenFile = Join-Path $RepoRoot 'tests\golden\is-dvorak.json'
+if (-not $GoldenFile) {
+    $GoldenFile = Join-Path $RepoRoot 'tests\golden\is-dvorak.json'
+}
+
+function Get-ExpectedMapKeys {
+    param([object]$Map)
+
+    if ($Map -is [System.Collections.IDictionary]) {
+        return $Map.Keys
+    }
+
+    return $Map.PSObject.Properties.Name
+}
+
+function Get-ExpectedMapValue {
+    param(
+        [object]$Map,
+        [string]$Name
+    )
+
+    if ($Map -is [System.Collections.IDictionary]) {
+        return $Map[$Name]
+    }
+
+    return $Map.$Name
+}
 
 # --- P/Invoke wrapper: load DLL, get KbdLayerDescriptor, walk tables -----------
 # C#-side helpers do all the marshalling. This works under both Windows
@@ -142,42 +185,52 @@ try {
 }
 
 # --- Assertions / golden compare ----------------------------------------------
-$mustHaveDeadKeys = @(
-    'U+00B4+U+0061', # acute + a -> á
-    'U+00B4+U+0045', # acute + E -> É
-    'U+00B4+U+0059', # acute + Y -> Ý
-    'U+00A8+U+006F', # diaeresis + o -> ö
-    'U+02C7+U+0073', # caron + s -> š
-    'U+0060+U+0061'  # grave + a -> à
-)
+if (-not $MustHaveDeadKeys) {
+    $MustHaveDeadKeys = @(
+        'U+00B4+U+0061', # acute + a -> á
+        'U+00B4+U+0045', # acute + E -> É
+        'U+00B4+U+0059', # acute + Y -> Ý
+        'U+00A8+U+006F', # diaeresis + o -> ö
+        'U+02C7+U+0073', # caron + s -> š
+        'U+0060+U+0061'  # grave + a -> à
+    )
+}
 
-foreach ($k in $mustHaveDeadKeys) {
+foreach ($k in $MustHaveDeadKeys) {
     if (-not $result.deadKeys.ContainsKey($k)) {
         throw "Dead key sequence missing: $k"
     }
 }
 
-# Icelandic-specific: acute+a must produce á (U+00E1)
-if ($result.deadKeys['U+00B4+U+0061'] -ne 'U+00E1') {
-    throw "dead_acute+a did not produce á (got $($result.deadKeys['U+00B4+U+0061']))"
+if (-not $ExpectedDeadKeyOutputs) {
+    $ExpectedDeadKeyOutputs = @{
+        'U+00B4+U+0061' = 'U+00E1' # acute + a -> á
+        'U+00B4+U+0079' = 'U+00FD' # acute + y -> ý
+        'U+00B4+U+0059' = 'U+00DD' # acute + Y -> Ý
+    }
 }
-if ($result.deadKeys['U+00B4+U+0079'] -ne 'U+00FD') {
-    throw "dead_acute+y did not produce ý"
-}
-if ($result.deadKeys['U+00B4+U+0059'] -ne 'U+00DD') {
-    throw "dead_acute+Y did not produce Ý"
+
+foreach ($k in (Get-ExpectedMapKeys -Map $ExpectedDeadKeyOutputs)) {
+    $expected = Get-ExpectedMapValue -Map $ExpectedDeadKeyOutputs -Name $k
+    if ($result.deadKeys[$k] -ne $expected) {
+        throw "Dead key sequence $k expected $expected but got $($result.deadKeys[$k])"
+    }
 }
 
 # AltGr flag must be set or AltGr combinations break.
 # fLocaleFlags is 32-bit packed: HIWORD=KBD_VERSION, LOWORD=flags.
 # KLLF_ALTGR = 0x0001 in the low word.
 $flags = $tables.fLocaleFlags -band 0xFFFF
-if (($flags -band 1) -ne 1) {
+if ($RequireAltGr -and (($flags -band 1) -ne 1)) {
     throw "KLLF_ALTGR flag not set in fLocaleFlags (got $($result.fLocaleFlags))"
 }
-Write-Host ("fLocaleFlags={0} (low word 0x{1:X4}, KLLF_ALTGR set)" -f $result.fLocaleFlags, $flags)
+if ($RequireAltGr) {
+    Write-Host ("fLocaleFlags={0} (low word 0x{1:X4}, KLLF_ALTGR set)" -f $result.fLocaleFlags, $flags)
+} else {
+    Write-Host ("fLocaleFlags={0} (low word 0x{1:X4})" -f $result.fLocaleFlags, $flags)
+}
 
-Write-Host "OK: $($result.deadKeyCount) dead key sequences, AltGr flag set, Icelandic accents verified."
+Write-Host "OK: $($result.deadKeyCount) dead key sequences and expected metadata verified."
 
 if ($UpdateGolden) {
     New-Item -ItemType Directory -Force -Path (Split-Path $GoldenFile) | Out-Null
