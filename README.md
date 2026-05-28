@@ -180,3 +180,10 @@ sidecar DLLs. Current Windows 11 ARM builds can `LoadLibrary` the pure ARM64X
 forwarder, but `LoadKeyboardLayout` rejects it as the active keyboard layout
 file. The installer therefore registers the x64-compatible sidecar as the
 visible `Layout File` and still copies the ARM64/ARM64X companions beside it.
+
+Windows shell text fields do not always honor custom keyboard-layout variants
+the same way classic desktop apps do. To make those fields use the generated
+layout, the installer promotes a selected layout to the visible base KLID for
+that language when it is the only selected packaged layout for that LANGID. If
+multiple selected layouts target the same LANGID, they remain custom variants
+unless the manifest explicitly marks one as the base override.

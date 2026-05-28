@@ -591,14 +591,17 @@ function Remove-StalePayloadFiles {
 }
 
 function Install-OneLayout {
-    param([Parameter(Mandatory)]$Layout)
+    param(
+        [Parameter(Mandatory)]$Layout,
+        [bool]$UseBaseKlidOverride
+    )
 
     $ProjectLayoutId = [string]$Layout.id
     $LayoutFile = [string]$Layout.dllName
     $LayoutText = [string]$Layout.displayName
     $BaseLangId = [string]$Layout.baseLangId
     $LanguageTag = [string]$Layout.languageTag
-    $OverrideBaseKlid = [bool]$Layout.overrideBaseKlid
+    $OverrideBaseKlid = [bool]$UseBaseKlidOverride
     if (-not $LayoutFile -or -not $LayoutText -or -not $BaseLangId) {
         throw "Manifest entry '$($Layout.id)' is missing dllName/displayName/baseLangId"
     }
@@ -788,11 +791,33 @@ public static class KbdActivate {
 '@ -ErrorAction SilentlyContinue
 
 $installedLayouts = @()
+$selectedLayouts = @()
 foreach ($id in $LayoutId) {
     if (-not $layoutsById.ContainsKey($id)) { throw "Unknown layout id '$id' in manifest $ManifestPath" }
     $layout = $layoutsById[$id]
     if (-not [bool]$layout.packaged) { throw "Layout '$id' is not packaged yet." }
-    $installedLayouts += Install-OneLayout -Layout $layout
+    $selectedLayouts += $layout
+}
+
+$selectedByBaseLangId = @{}
+foreach ($layout in $selectedLayouts) {
+    $base = ([string]$layout.baseLangId).ToLowerInvariant()
+    if (-not $selectedByBaseLangId.ContainsKey($base)) { $selectedByBaseLangId[$base] = @() }
+    $selectedByBaseLangId[$base] = @($selectedByBaseLangId[$base]) + $layout
+}
+
+foreach ($layout in $selectedLayouts) {
+    $base = ([string]$layout.baseLangId).ToLowerInvariant()
+    $sameBaseSelection = @($selectedByBaseLangId[$base])
+    $explicitOverride = [bool]$layout.overrideBaseKlid
+    $implicitShellOverride = (-not $explicitOverride -and $sameBaseSelection.Count -eq 1)
+    $useBaseKlidOverride = $explicitOverride -or $implicitShellOverride
+    if ($implicitShellOverride) {
+        Write-Host "Using base KLID override for $($layout.id) because it is the only selected layout for LANGID $base."
+    } elseif (-not $explicitOverride -and $sameBaseSelection.Count -gt 1) {
+        Write-Host "Keeping $($layout.id) as a custom KLID because multiple selected layouts target LANGID $base."
+    }
+    $installedLayouts += Install-OneLayout -Layout $layout -UseBaseKlidOverride $useBaseKlidOverride
 }
 
 foreach ($installedLayout in $installedLayouts) {
